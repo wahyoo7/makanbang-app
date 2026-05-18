@@ -1,523 +1,128 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Utensils, Wallet, Users, Store, List, 
   ShoppingCart, Plus, Minus, Check, LogOut, 
-  AlertCircle, ChevronRight, Receipt, Clock
+  AlertCircle, ChevronRight, Receipt, Clock,
+  Sparkles, Star, MessageSquare, Copy, ChevronDown,
+  TrendingUp, MapPin, Navigation, Compass, Award,
+  Flame, Bell, Search, Filter, ShieldCheck, ArrowLeft
 } from 'lucide-react';
 
-// --- INITIAL MOCK DATA (Simulasi Database) ---
+// --- DATABASE SIMULASI (TEMA ADVENTURE FOOD) ---
 const initialRestaurants = [
-  { id: 1, name: 'Warteg Bahari Kharisma' },
-  { id: 2, name: 'Ayam Geprek Bensu' },
-  { id: 3, name: 'Soto Lamongan Cak Har' }
+  { 
+    id: 1, 
+    name: 'Warteg Bahari Kingdom', 
+    rating: 4.9, 
+    reviews: 320, 
+    category: 'Local Culinary • Cozy', 
+    image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80',
+    tag: 'Terpopuler 🔥',
+    distance: '200m dari Kantor',
+    time: '15-20 mnt'
+  },
+  { 
+    id: 2, 
+    name: 'Geprek Bensu Volcano', 
+    rating: 4.8, 
+    reviews: 154, 
+    category: 'Spicy Grill • Fast Food', 
+    image: 'https://images.unsplash.com/photo-1562967914-608f82629710?auto=format&fit=crop&w=600&q=80',
+    tag: 'Promo Juara 🏷️',
+    distance: '800m dari Kantor',
+    time: '20-25 mnt'
+  },
+  { 
+    id: 3, 
+    name: 'Soto Lamongan Cak Legendaris', 
+    rating: 4.9, 
+    reviews: 412, 
+    category: 'Warm Soup • Authentic', 
+    image: 'https://images.unsplash.com/photo-1596797038530-2c107229654b?auto=format&fit=crop&w=600&q=80',
+    tag: 'Pilihan OB ⭐',
+    distance: '1.2km dari Kantor',
+    time: '25-30 mnt'
+  }
 ];
 
 const initialMenus = [
-  { id: 1, restaurant_id: 1, name: 'Nasi Telur Dadar + Orek', price: 15000 },
-  { id: 2, restaurant_id: 1, name: 'Nasi Ayam Goreng', price: 18000 },
-  { id: 3, restaurant_id: 1, name: 'Es Teh Manis', price: 4000 },
-  { id: 4, restaurant_id: 2, name: 'Paket Geprek Leleh', price: 25000 },
-  { id: 5, restaurant_id: 2, name: 'Jamur Crispy', price: 10000 },
-  { id: 6, restaurant_id: 3, name: 'Soto Ayam Campur', price: 18000 },
-  { id: 7, restaurant_id: 3, name: 'Soto Daging Pisah', price: 22000 },
+  { id: 1, restaurant_id: 1, name: 'Nasi Telur Dadar + Orek Tempe', price: 15000, desc: 'Perpaduan klasik nasi hangat, telur dadar krispi tebal, dan orek tempe manis basah.', popular: true, tag: 'Recomended' },
+  { id: 2, restaurant_id: 1, name: 'Nasi Ayam Goreng Serundeng', price: 18000, desc: 'Ayam goreng empuk bumbu ungkep ditaburi serundeng kelapa gurih melimpah.', popular: true, tag: 'Must Try' },
+  { id: 3, restaurant_id: 1, name: 'Es Teh Manis Jumbo Booster', price: 4000, desc: 'Es teh manis dingin ukuran gelas raksasa siap mengembalikan fokus kerjamu.', popular: false },
+  { id: 4, restaurant_id: 2, name: 'Paket Geprek Lava Mozzarella', price: 25000, desc: 'Ayam geprek krispi diselimuti lelehan keju mozzarella molor dan sambal korek level petir.', popular: true, tag: 'Pedas Gila' },
+  { id: 5, restaurant_id: 2, name: 'Jamur Crispy Kriuk Nagih', price: 10000, desc: 'Jamur tiram pilihan digoreng tepung bumbu rahasia super renyah.', popular: false },
+  { id: 6, restaurant_id: 3, name: 'Soto Ayam Koya Istimewa', price: 18000, desc: 'Soto Lamongan kuah kuning kaya rempah dengan taburan koya gurih yang melimpah ruah.', popular: true, tag: 'Legendaris' },
+  { id: 7, restaurant_id: 3, name: 'Soto Sapi Kuah Bening', price: 22000, desc: 'Potongan daging sapi empuk disiram kuah soto bening hangat menyegarkan.', popular: false },
 ];
 
 const initialOrders = [
   {
     id: 1,
-    userName: "Mbak Rini",
+    userName: "Mbak Rini (HRD)",
     total: 19000,
     items: [
-      { menuId: 1, name: 'Nasi Telur Dadar + Orek', price: 15000, qty: 1, notes: "Oreknya basah ya mas" },
-      { menuId: 3, name: 'Es Teh Manis', price: 4000, qty: 1, notes: "" },
+      { menuId: 1, name: 'Nasi Telur Dadar + Orek Tempe', price: 15000, qty: 1, notes: "Oreknya basah ya mas" },
+      { menuId: 3, name: 'Es Teh Manis Jumbo Booster', price: 4000, qty: 1, notes: "" },
+    ]
+  },
+  {
+    id: 2,
+    userName: "Mas Bimo (IT Support)",
+    total: 25000,
+    items: [
+      { menuId: 4, name: 'Paket Geprek Lava Mozzarella', price: 25000, qty: 1, notes: "Sambal level 5!" },
     ]
   }
 ];
 
-// Helper: Format Rupiah
 const formatRp = (num) => 'Rp ' + num.toLocaleString('id-ID');
 
-// ==========================================
-// MAIN APP COMPONENT
-// ==========================================
-export default function LunchApp() {
-  // Global States
-  const [currentUser, setCurrentUser] = useState(null); // null = belum login
+export default function App() {
+  // Navigation Screens State
+  // "onboarding" | "login" | "user_dashboard" | "admin_dashboard" | "restaurant_detail" | "ticket_view"
+  const [currentScreen, setCurrentScreen] = useState('onboarding');
   
-  // "Database" States
-  const [restaurants, setRestaurants] = useState(initialRestaurants);
-  const [menus, setMenus] = useState(initialMenus);
+  // App States
+  const [currentUser, setCurrentUser] = useState(null);
+  const [restaurants] = useState(initialRestaurants);
+  const [menus] = useState(initialMenus);
   const [orders, setOrders] = useState(initialOrders);
+  const [selectedResto, setSelectedResto] = useState(initialRestaurants[0]);
+  const [cart, setCart] = useState([]);
   
+  // Configuration
   const [session, setSession] = useState({
-    isOpen: false,
-    openRestoIds: [1, 2], // Default resto yang dipilih Admin
-    endTime: '11:30',
-    bankAccount: 'BCA 123456789 a.n Bapak OB',
-    rejectMessage: 'Moon maaf, jam order udah lewat, silakan hubungi saya via wa... tapi please jangan order yang jauh2 ya 😭'
+    isOpen: true,
+    openRestoIds: [1, 2, 3],
+    endTime: '11:45',
+    bankAccount: 'BCA 872-019-2831 a.n Joko Susilo (OB)',
+    rejectMessage: 'Waduh petualangan kuliner hari ini sudah ditutup! 😭 Hubungi OB jika darurat!'
   });
 
-  // Handle Login Logic
+  const handleStartAdventure = () => {
+    setCurrentScreen('login');
+  };
+
   const handleLogin = (name, phone) => {
-    // Sesuai PRD: Role Admin/OB jika login khusus. 
-    // Di sini kita buat trigger rahasia: Jika no HP '0000', maka dia OB.
     const role = phone === '0000' ? 'admin' : 'user';
     setCurrentUser({ name, phone, role });
+    if (role === 'admin') {
+      setCurrentScreen('admin_dashboard');
+    } else {
+      setCurrentScreen('user_dashboard');
+    }
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
+    setCart([]);
+    setCurrentScreen('onboarding');
   };
 
-  const addOrder = (orderData) => {
-    setOrders([...orders, { id: Date.now(), ...orderData }]);
+  const viewRestoDetail = (resto) => {
+    setSelectedResto(resto);
+    setCurrentScreen('restaurant_detail');
   };
-
-  return (
-    <div className="min-h-screen bg-gray-100 flex justify-center font-sans text-gray-800">
-      {/* Mobile Wrapper */}
-      <div className="w-full max-w-md bg-white h-[100dvh] flex flex-col relative shadow-2xl overflow-hidden">
-        
-        {!currentUser ? (
-          <LoginScreen onLogin={handleLogin} />
-        ) : currentUser.role === 'admin' ? (
-          <AdminDashboard 
-            onLogout={handleLogout}
-            restaurants={restaurants} setRestaurants={setRestaurants}
-            menus={menus} setMenus={setMenus}
-            session={session} setSession={setSession}
-            orders={orders}
-          />
-        ) : (
-          <UserDashboard 
-            user={currentUser} onLogout={handleLogout}
-            restaurants={restaurants} menus={menus}
-            session={session} addOrder={addOrder}
-          />
-        )}
-
-      </div>
-    </div>
-  );
-}
-
-// ==========================================
-// LOGIN SCREEN
-// ==========================================
-function LoginScreen({ onLogin }) {
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (name.trim() && phone.trim()) {
-      onLogin(name, phone);
-    }
-  };
-
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center p-8 bg-gradient-to-b from-amber-50 to-white">
-      <div className="w-20 h-20 bg-amber-500 rounded-2xl flex items-center justify-center text-white shadow-lg mb-6 transform rotate-3">
-        <Utensils size={40} />
-      </div>
-      <h1 className="text-3xl font-extrabold text-amber-600 mb-2">MakanBang!</h1>
-      <p className="text-center text-gray-500 mb-8 text-sm">Pesan makan siang kantor tanpa ribet, tanpa pusing ngitung.</p>
-
-      <form onSubmit={handleSubmit} className="w-full space-y-4">
-        <div>
-          <label className="block text-xs font-bold text-gray-500 mb-1">Nama Panggilan</label>
-          <input 
-            type="text" required value={name} onChange={e => setName(e.target.value)}
-            placeholder="Mis: Aa Raffi"
-            className="w-full border-2 border-gray-200 p-3 rounded-xl focus:border-amber-500 focus:outline-none transition"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-bold text-gray-500 mb-1">No. HP (Sebagai Password)</label>
-          <input 
-            type="text" required value={phone} onChange={e => setPhone(e.target.value)}
-            placeholder="0812xxxxxx"
-            className="w-full border-2 border-gray-200 p-3 rounded-xl focus:border-amber-500 focus:outline-none transition"
-          />
-        </div>
-        <button type="submit" className="w-full bg-amber-500 text-white font-bold py-4 rounded-xl shadow-md hover:bg-amber-600 transition active:scale-95 mt-4">
-          Masuk Sekarang
-        </button>
-      </form>
-
-      <div className="mt-8 p-4 bg-blue-50 text-blue-800 rounded-xl text-xs w-full border border-blue-100 flex gap-3">
-        <AlertCircle size={20} className="shrink-0" />
-        <p><strong>Rahasia Testing:</strong> Masukkan No. HP <code>0000</code> untuk login sebagai <strong>OB (Admin)</strong>. Selain itu, Anda masuk sebagai <strong>Karyawan</strong>.</p>
-      </div>
-    </div>
-  );
-}
-
-// ==========================================
-// ADMIN DASHBOARD & VIEWS
-// ==========================================
-function AdminDashboard({ onLogout, restaurants, setRestaurants, menus, setMenus, session, setSession, orders }) {
-  const [activeTab, setActiveTab] = useState('lapak'); // lapak | master | rekap
-
-  return (
-    <>
-      <div className="bg-slate-800 text-white p-4 shadow-md flex justify-between items-center z-10 shrink-0">
-        <h1 className="font-bold text-lg flex items-center gap-2"><Store size={20}/> Panel OB</h1>
-        <button onClick={onLogout} className="text-slate-300 hover:text-white p-2 bg-slate-700 rounded-lg"><LogOut size={18}/></button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto bg-gray-50 pb-24">
-        {activeTab === 'lapak' && <AdminLapak session={session} setSession={setSession} restaurants={restaurants} />}
-        {activeTab === 'master' && <AdminMaster restaurants={restaurants} setRestaurants={setRestaurants} menus={menus} setMenus={setMenus} />}
-        {activeTab === 'rekap' && <AdminRekap orders={orders} restaurants={restaurants} menus={menus} />}
-      </div>
-
-      {/* Admin Bottom Navigation */}
-      <div className="bg-white border-t flex justify-around p-2 text-xs text-gray-500 absolute bottom-0 w-full z-20 pb-safe">
-        <button onClick={() => setActiveTab('lapak')} className={`flex flex-col items-center p-2 w-full rounded-lg ${activeTab === 'lapak' ? 'text-amber-600 bg-amber-50 font-bold' : ''}`}>
-          <Store size={24} className="mb-1" /> Lapak
-        </button>
-        <button onClick={() => setActiveTab('master')} className={`flex flex-col items-center p-2 w-full rounded-lg ${activeTab === 'master' ? 'text-amber-600 bg-amber-50 font-bold' : ''}`}>
-          <List size={24} className="mb-1" /> Master Data
-        </button>
-        <button onClick={() => setActiveTab('rekap')} className={`flex flex-col items-center p-2 w-full rounded-lg ${activeTab === 'rekap' ? 'text-amber-600 bg-amber-50 font-bold' : ''}`}>
-          <Users size={24} className="mb-1" /> Rekap
-        </button>
-      </div>
-    </>
-  );
-}
-
-function AdminLapak({ session, setSession, restaurants }) {
-  const [formData, setFormData] = useState(session);
-
-  const handleToggleResto = (id) => {
-    setFormData(prev => ({
-      ...prev,
-      openRestoIds: prev.openRestoIds.includes(id) 
-        ? prev.openRestoIds.filter(rId => rId !== id)
-        : [...prev.openRestoIds, id]
-    }));
-  };
-
-  const handleSave = () => {
-    if (formData.openRestoIds.length === 0) return alert('Pilih minimal 1 restoran!');
-    setSession({ ...formData, isOpen: true });
-  };
-
-  if (session.isOpen) {
-    return (
-      <div className="p-6 h-full flex flex-col justify-center text-center">
-        <div className="w-24 h-24 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border-4 border-white">
-          <Check size={48} />
-        </div>
-        <h2 className="text-2xl font-bold mb-2">Lapak Sedang Buka!</h2>
-        <p className="text-gray-500 mb-8">Karyawan sekarang bisa melihat menu dan melakukan pemesanan.</p>
-        <button 
-          onClick={() => setSession({ ...session, isOpen: false })}
-          className="bg-red-500 text-white w-full py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-red-600 active:scale-95 transition"
-        >
-          Tutup Lapak Sekarang
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="p-4 space-y-6">
-      <div>
-        <h2 className="font-bold text-xl text-gray-800 mb-1">Setup Lapak Hari Ini</h2>
-        <p className="text-sm text-gray-500">Pilih restoran dan atur batas waktu pesanan.</p>
-      </div>
-
-      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 space-y-4">
-        <div>
-          <label className="block text-sm font-bold text-gray-700 mb-2">1. Pilih Restoran (Maks bebas)</label>
-          <div className="space-y-2">
-            {restaurants.map(resto => (
-              <label key={resto.id} className="flex items-center gap-3 p-3 border rounded-xl cursor-pointer hover:bg-gray-50">
-                <input 
-                  type="checkbox" className="w-5 h-5 rounded text-amber-500 accent-amber-500"
-                  checked={formData.openRestoIds.includes(resto.id)}
-                  onChange={() => handleToggleResto(resto.id)}
-                />
-                <span className="font-medium text-gray-700">{resto.name}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-bold text-gray-700 mb-2">2. Batas Waktu Order</label>
-          <input 
-            type="time" value={formData.endTime} onChange={e => setFormData({...formData, endTime: e.target.value})}
-            className="w-full border p-3 rounded-xl bg-gray-50"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-bold text-gray-700 mb-2">3. Info Rekening / E-Wallet</label>
-          <input 
-            type="text" value={formData.bankAccount} onChange={e => setFormData({...formData, bankAccount: e.target.value})}
-            className="w-full border p-3 rounded-xl bg-gray-50" placeholder="Misal: BCA 1234 a.n Budi"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-bold text-gray-700 mb-2">4. Pesan Penolakan Otomatis</label>
-          <textarea 
-            value={formData.rejectMessage} onChange={e => setFormData({...formData, rejectMessage: e.target.value})}
-            className="w-full border p-3 rounded-xl bg-gray-50 text-sm h-24"
-          />
-        </div>
-      </div>
-
-      <button onClick={handleSave} className="bg-amber-500 text-white w-full py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-amber-600 active:scale-95 transition">
-        Buka Lapak Sekarang
-      </button>
-    </div>
-  );
-}
-
-function AdminMaster({ restaurants, setRestaurants, menus, setMenus }) {
-  const [newRestoName, setNewRestoName] = useState('');
-  const [activeAddMenuRestoId, setActiveAddMenuRestoId] = useState(null);
-  const [newMenu, setNewMenu] = useState({ name: '', price: '' });
-
-  const handleAddResto = () => {
-    if (newRestoName.trim()) {
-      setRestaurants([...restaurants, { id: Date.now(), name: newRestoName }]);
-      setNewRestoName('');
-    }
-  };
-
-  const handleAddMenu = (restoId) => {
-    if (newMenu.name && newMenu.price) {
-      setMenus([...menus, { id: Date.now(), restaurant_id: restoId, name: newMenu.name, price: parseInt(newMenu.price) }]);
-      setNewMenu({ name: '', price: '' });
-      setActiveAddMenuRestoId(null);
-    }
-  };
-
-  return (
-    <div className="p-4 space-y-6">
-      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-4">
-        <label className="block text-sm font-bold text-gray-700 mb-2">Tambah Restoran Baru</label>
-        <div className="flex gap-2">
-          <input 
-            type="text" value={newRestoName} onChange={e => setNewRestoName(e.target.value)}
-            placeholder="Nama Resto..." className="flex-1 border p-3 rounded-xl bg-gray-50"
-          />
-          <button onClick={handleAddResto} className="bg-slate-800 text-white px-5 rounded-xl font-bold"><Plus/></button>
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        {restaurants.map(resto => {
-          const restoMenus = menus.filter(m => m.restaurant_id === resto.id);
-          return (
-            <div key={resto.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-              <h3 className="font-bold text-lg text-amber-600 border-b pb-2 mb-2">{resto.name}</h3>
-              
-              <div className="space-y-2 mb-4">
-                {restoMenus.length === 0 ? <p className="text-xs text-gray-400 italic">Belum ada menu</p> : null}
-                {restoMenus.map(menu => (
-                  <div key={menu.id} className="flex justify-between items-center text-sm text-gray-700 bg-gray-50 p-2 rounded-lg border border-gray-100">
-                    <span className="font-medium">{menu.name}</span>
-                    <span className="font-bold text-slate-800">{formatRp(menu.price)}</span>
-                  </div>
-                ))}
-              </div>
-
-              {activeAddMenuRestoId === resto.id ? (
-                <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 space-y-2">
-                  <input 
-                    type="text" placeholder="Nama Menu..." value={newMenu.name} onChange={e => setNewMenu({...newMenu, name: e.target.value})}
-                    className="w-full p-2 border rounded-lg text-sm"
-                  />
-                  <input 
-                    type="number" placeholder="Harga (Mis: 15000)" value={newMenu.price} onChange={e => setNewMenu({...newMenu, price: e.target.value})}
-                    className="w-full p-2 border rounded-lg text-sm"
-                  />
-                  <div className="flex gap-2 pt-2">
-                    <button onClick={() => handleAddMenu(resto.id)} className="flex-1 bg-amber-500 text-white p-2 rounded-lg text-sm font-bold">Simpan</button>
-                    <button onClick={() => setActiveAddMenuRestoId(null)} className="flex-1 bg-gray-200 text-gray-700 p-2 rounded-lg text-sm font-bold">Batal</button>
-                  </div>
-                </div>
-              ) : (
-                <button onClick={() => setActiveAddMenuRestoId(resto.id)} className="text-amber-500 text-sm font-bold flex items-center gap-1 hover:text-amber-600">
-                  <Plus size={16}/> Tambah Menu
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function AdminRekap({ orders, restaurants, menus }) {
-  const [view, setView] = useState('orang'); // orang | resto | menu
-
-  // Compute Data for Views
-  const rekapResto = useMemo(() => {
-    return restaurants.map(resto => {
-      const menuIds = menus.filter(m => m.restaurant_id === resto.id).map(m => m.id);
-      let totalQty = 0;
-      let totalUang = 0;
-      let items = [];
-      
-      orders.forEach(order => {
-        order.items.forEach(item => {
-          if (menuIds.includes(item.menuId)) {
-            totalQty += item.qty;
-            totalUang += item.qty * item.price;
-            items.push({ ...item, userName: order.userName });
-          }
-        });
-      });
-      return { ...resto, totalQty, totalUang, items };
-    }).filter(r => r.totalQty > 0);
-  }, [orders, restaurants, menus]);
-
-  const rekapMenu = useMemo(() => {
-    return menus.map(menu => {
-      let totalQty = 0;
-      orders.forEach(order => {
-        order.items.forEach(item => {
-          if (item.menuId === menu.id) totalQty += item.qty;
-        });
-      });
-      return { ...menu, totalQty };
-    }).filter(m => m.totalQty > 0);
-  }, [orders, menus]);
-
-  const totalAllMoney = orders.reduce((sum, o) => sum + o.total, 0);
-
-  return (
-    <div className="p-4 h-full flex flex-col">
-      <div className="bg-slate-800 text-white p-4 rounded-2xl shadow-lg mb-4 flex justify-between items-center">
-        <div>
-          <p className="text-slate-400 text-xs mb-1">Total Pemasukan Makanan</p>
-          <h2 className="text-2xl font-bold text-amber-400">{formatRp(totalAllMoney)}</h2>
-        </div>
-        <Wallet size={32} className="text-slate-600" />
-      </div>
-
-      <div className="flex bg-white rounded-xl shadow-sm border p-1 mb-4">
-        {['orang', 'resto', 'menu'].map(v => (
-          <button 
-            key={v} onClick={() => setView(v)}
-            className={`flex-1 py-2 text-sm font-bold capitalize rounded-lg transition ${view === v ? 'bg-amber-100 text-amber-700' : 'text-gray-500'}`}
-          >
-            Per {v}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex-1 space-y-3">
-        {view === 'orang' && orders.length === 0 && <EmptyState message="Belum ada pesanan masuk" />}
-        {view === 'orang' && orders.map(order => (
-          <div key={order.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-            <div className="flex justify-between items-center border-b pb-2 mb-2">
-              <h3 className="font-bold text-lg text-slate-800">{order.userName}</h3>
-              <span className="font-bold text-amber-600">{formatRp(order.total)}</span>
-            </div>
-            <ul className="space-y-2">
-              {order.items.map((item, i) => (
-                <li key={i} className="text-sm">
-                  <div className="flex justify-between">
-                    <span className="font-medium text-gray-700">{item.qty}x {item.name}</span>
-                  </div>
-                  {item.notes && <p className="text-xs text-amber-600 bg-amber-50 p-1 rounded mt-1 italic">"{item.notes}"</p>}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-
-        {view === 'resto' && rekapResto.length === 0 && <EmptyState message="Belum ada pesanan masuk" />}
-        {view === 'resto' && rekapResto.map(resto => (
-          <div key={resto.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-            <div className="flex justify-between items-center border-b pb-2 mb-2">
-              <h3 className="font-bold text-lg text-slate-800">{resto.name}</h3>
-              <span className="text-sm font-bold bg-slate-100 px-2 py-1 rounded text-slate-600">{resto.totalQty} porsi</span>
-            </div>
-            <ul className="space-y-2">
-              {resto.items.map((item, i) => (
-                <li key={i} className="text-sm border-b border-dashed pb-1">
-                  <div className="flex justify-between">
-                    <span className="font-medium text-gray-700">{item.qty}x {item.name}</span>
-                    <span className="text-gray-500 text-xs">({item.userName})</span>
-                  </div>
-                  {item.notes && <p className="text-xs text-amber-600 italic">Catatan: {item.notes}</p>}
-                </li>
-              ))}
-            </ul>
-            <div className="mt-3 text-right text-sm font-bold text-amber-600">
-              Total tagihan ke resto: {formatRp(resto.totalUang)}
-            </div>
-          </div>
-        ))}
-
-        {view === 'menu' && rekapMenu.length === 0 && <EmptyState message="Belum ada pesanan masuk" />}
-        {view === 'menu' && (
-          <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-            {rekapMenu.map((menu, i) => (
-              <div key={menu.id} className={`flex justify-between items-center p-4 ${i !== rekapMenu.length - 1 ? 'border-b' : ''}`}>
-                <span className="font-medium text-gray-800">{menu.name}</span>
-                <span className="font-bold text-amber-600 bg-amber-50 px-3 py-1 rounded-lg">{menu.totalQty}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function EmptyState({ message }) {
-  return (
-    <div className="text-center py-10 text-gray-400">
-      <Receipt size={48} className="mx-auto mb-3 opacity-20" />
-      <p>{message}</p>
-    </div>
-  );
-}
-
-
-// ==========================================
-// USER DASHBOARD & VIEWS
-// ==========================================
-function UserDashboard({ user, onLogout, restaurants, menus, session, addOrder }) {
-  const [cart, setCart] = useState([]); // [{ menuId, name, price, qty, notes }]
-  const [showCart, setShowCart] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
-
-  // Jika lapak tutup
-  if (!session.isOpen) {
-    return (
-      <div className="flex flex-col h-full">
-        <div className="p-4 flex justify-between items-center shrink-0">
-           <h1 className="font-bold text-lg text-slate-800">Halo, {user.name}!</h1>
-           <button onClick={onLogout} className="text-red-500 text-sm font-bold p-2 bg-red-50 rounded-lg">Logout</button>
-        </div>
-        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-          <div className="w-32 h-32 mb-6">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300 w-full h-full">
-              <circle cx="12" cy="12" r="10"></circle>
-              <polyline points="12 6 12 12 16 14"></polyline>
-            </svg>
-          </div>
-          <h2 className="text-2xl font-bold text-slate-800 mb-4">Lapak Belum Buka / Udah Tutup</h2>
-          <div className="bg-amber-50 p-4 rounded-xl border border-amber-200">
-            <p className="text-amber-800 italic text-sm">"{session.rejectMessage}"</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   const handleUpdateCart = (menu, delta) => {
     setCart(prev => {
@@ -540,172 +145,514 @@ function UserDashboard({ user, onLogout, restaurants, menus, session, addOrder }
   const cartItemsCount = cart.reduce((sum, item) => sum + item.qty, 0);
 
   const handleCheckout = () => {
-    addOrder({
-      userName: user.name,
+    setOrders([...orders, {
+      id: Date.now(),
+      userName: currentUser.name + " (You)",
       items: cart,
       total: cartTotal
-    });
-    setCart([]);
-    setShowCart(false);
-    setShowSuccess(true);
+    }]);
+    setCurrentScreen('ticket_view');
   };
 
-  const openRestaurants = restaurants.filter(r => session.openRestoIds.includes(r.id));
-
   return (
-    <>
-      {/* Header */}
-      <div className="bg-white p-4 shadow-sm flex justify-between items-center z-10 shrink-0 sticky top-0">
-        <div>
-          <h1 className="font-bold text-lg text-slate-800">Halo, {user.name}! 👋</h1>
-          <p className="text-xs text-amber-600 font-medium flex items-center gap-1"><Clock size={12}/> Order s/d {session.endTime}</p>
+    <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center font-sans antialiased p-4">
+      
+      {/* Container Device-Mockup (Sangat dioptimalkan untuk HP) */}
+      <div className="w-full max-w-[410px] bg-[#F7F8FC] h-[820px] flex flex-col relative shadow-[0_24px_60px_rgba(0,0,0,0.6)] rounded-[48px] border-[10px] border-slate-950 overflow-hidden">
+        
+        {/* Notch Kamera Depan HP */}
+        <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-6 bg-slate-950 rounded-b-2xl z-50 flex items-center justify-center">
+          <div className="w-12 h-1.5 bg-slate-800 rounded-full"></div>
         </div>
-        <button onClick={onLogout} className="text-slate-400 hover:text-red-500 p-2"><LogOut size={20}/></button>
-      </div>
 
-      {/* Main Content (Menu List) */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-gray-50 pb-28">
-        {openRestaurants.map(resto => {
-          const restoMenus = menus.filter(m => m.restaurant_id === resto.id);
-          return (
-            <div key={resto.id} className="space-y-3">
-              <h2 className="font-extrabold text-xl text-slate-800 flex items-center gap-2">
-                <Store size={20} className="text-amber-500"/> {resto.name}
-              </h2>
-              <div className="space-y-3">
-                {restoMenus.map(menu => {
-                  const cartItem = cart.find(c => c.menuId === menu.id);
-                  const qty = cartItem ? cartItem.qty : 0;
-                  
-                  return (
-                    <div key={menu.id} className={`bg-white rounded-2xl p-4 shadow-sm border transition-all ${qty > 0 ? 'border-amber-400 ring-1 ring-amber-100' : 'border-gray-100'}`}>
-                      <div className="flex justify-between items-center">
-                        <div className="pr-4">
-                          <h3 className="font-bold text-slate-800 mb-1">{menu.name}</h3>
-                          <p className="text-amber-600 font-bold text-sm">{formatRp(menu.price)}</p>
-                        </div>
-                        
-                        {/* +/- Controls */}
-                        {qty === 0 ? (
-                          <button 
-                            onClick={() => handleUpdateCart(menu, 1)}
-                            className="bg-amber-50 text-amber-600 font-bold px-4 py-2 rounded-xl border border-amber-200 hover:bg-amber-100 transition"
-                          >
-                            Tambah
-                          </button>
-                        ) : (
-                          <div className="flex items-center gap-3 bg-amber-50 rounded-xl p-1 border border-amber-200">
-                            <button onClick={() => handleUpdateCart(menu, -1)} className="w-8 h-8 flex items-center justify-center bg-white text-amber-600 rounded-lg shadow-sm font-bold">-</button>
-                            <span className="font-bold w-4 text-center text-amber-800">{qty}</span>
-                            <button onClick={() => handleUpdateCart(menu, 1)} className="w-8 h-8 flex items-center justify-center bg-amber-500 text-white rounded-lg shadow-sm font-bold">+</button>
-                          </div>
-                        )}
-                      </div>
-                      
-                      {/* Notes Input Field (Muncul jika item ada di keranjang) */}
-                      {qty > 0 && (
-                        <div className="mt-3 pt-3 border-t border-gray-100">
-                          <input 
-                            type="text"
-                            placeholder="Catatan (Mis: Pedes mampus, gapake bawang)"
-                            value={cartItem.notes}
-                            onChange={(e) => handleUpdateNotes(menu.id, e.target.value)}
-                            className="w-full bg-gray-50 border border-gray-200 p-2 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-amber-400"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+        {/* SCREEN 1: ONBOARDING / ADVENTURE WELCOME (Kombinasi Gambar 1 & 2) */}
+        {currentScreen === 'onboarding' && (
+          <div className="flex-1 flex flex-col justify-between p-8 pt-16 bg-gradient-to-b from-[#E2E6FF] via-[#EAEFFF] to-[#F5F8FF]">
+            <div className="flex justify-between items-center">
+              <span className="text-xs font-black text-indigo-600 tracking-wider">9:40 PM</span>
+              <div className="flex gap-1 items-center">
+                <div className="w-3 h-3 rounded-full bg-indigo-500"></div>
+                <div className="w-1.5 h-1.5 rounded-full bg-indigo-300"></div>
               </div>
             </div>
-          )
-        })}
-      </div>
 
-      {/* Floating Cart Button */}
-      {cartItemsCount > 0 && !showCart && !showSuccess && (
-        <div className="absolute bottom-6 left-0 right-0 px-4 z-20">
-          <button 
-            onClick={() => setShowCart(true)}
-            className="w-full bg-slate-800 text-white p-4 rounded-2xl shadow-xl flex justify-between items-center hover:bg-slate-700 transition transform hover:-translate-y-1"
-          >
-            <div className="flex items-center gap-3">
-              <div className="bg-amber-500 w-8 h-8 rounded-full flex items-center justify-center font-bold">{cartItemsCount}</div>
-              <span className="font-medium text-slate-200">Pesananmu</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-lg">{formatRp(cartTotal)}</span>
-              <ChevronRight size={20} className="text-slate-400"/>
-            </div>
-          </button>
-        </div>
-      )}
-
-      {/* Cart Modal */}
-      {showCart && (
-        <div className="absolute inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex flex-col justify-end">
-          <div className="bg-white w-full rounded-t-3xl shadow-2xl flex flex-col max-h-[85vh] animate-in slide-in-from-bottom-full duration-300">
-            <div className="p-4 border-b flex justify-between items-center shrink-0">
-              <h2 className="font-bold text-xl text-slate-800">Detail Pesanan</h2>
-              <button onClick={() => setShowCart(false)} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 font-bold hover:bg-gray-200">✕</button>
-            </div>
-            
-            <div className="p-4 overflow-y-auto flex-1 space-y-4">
-              {cart.map(item => (
-                <div key={item.menuId} className="flex justify-between items-start border-b pb-3 border-dashed">
-                  <div>
-                    <h4 className="font-bold text-gray-800">{item.name}</h4>
-                    <p className="text-gray-500 text-sm">{item.qty} x {formatRp(item.price)}</p>
-                    {item.notes && <p className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded inline-block mt-1">"{item.notes}"</p>}
-                  </div>
-                  <span className="font-bold text-slate-800">{formatRp(item.price * item.qty)}</span>
+            {/* Ilustrasi Utama 3D-Look */}
+            <div className="my-auto text-center space-y-6">
+              <div className="relative inline-block mx-auto">
+                {/* Bubble Hiasan */}
+                <div className="absolute -top-6 -left-6 w-14 h-14 bg-amber-400 rounded-2xl flex items-center justify-center text-slate-900 shadow-md font-black text-lg transform -rotate-12 animate-bounce">
+                  Hi! 👋
                 </div>
-              ))}
+                <div className="absolute -bottom-4 -right-4 w-16 h-16 bg-indigo-500 rounded-3xl flex items-center justify-center text-white shadow-lg transform rotate-12">
+                  <Flame size={28} className="animate-pulse" />
+                </div>
+                
+                {/* Gambar Karakter / Makanan (Menggunakan Avatar/Simbol Premium) */}
+                <div className="w-48 h-48 rounded-[40px] bg-gradient-to-tr from-indigo-200 to-indigo-100 flex items-center justify-center shadow-inner border-4 border-white">
+                  <span className="text-8xl">🍱</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <h1 className="text-3xl font-black text-slate-800 tracking-tight leading-none">
+                  Let's Start Your <br />
+                  <span className="text-indigo-600 bg-indigo-100 px-3 py-1 rounded-2xl inline-block mt-1 transform -rotate-1">
+                    Food Adventure
+                  </span>
+                </h1>
+                <p className="text-xs text-slate-500 max-w-[250px] mx-auto leading-relaxed">
+                  Pesan makan siang bersama rekan kantor dengan menyenangkan, cepat, & terkoordinasi.
+                </p>
+              </div>
             </div>
 
-            <div className="p-6 bg-slate-50 rounded-t-3xl border-t shrink-0">
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-gray-500 font-medium">Total Harga</span>
-                <span className="text-2xl font-extrabold text-slate-800">{formatRp(cartTotal)}</span>
-              </div>
+            {/* Tombol Aksi Bawah */}
+            <div className="space-y-3">
               <button 
-                onClick={handleCheckout}
-                className="w-full bg-amber-500 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-amber-600 transition flex items-center justify-center gap-2"
+                onClick={handleStartAdventure}
+                className="w-full bg-indigo-600 text-white font-extrabold py-4 px-6 rounded-2xl shadow-lg shadow-indigo-600/30 hover:bg-indigo-700 active:scale-[0.98] transition duration-200 flex items-center justify-between text-sm"
               >
-                Pesan & Bayar <ChevronRight size={20}/>
+                <span>Mulai Petualangan</span>
+                <div className="w-7 h-7 bg-white/20 rounded-xl flex items-center justify-center">
+                  <ChevronRight size={18} />
+                </div>
+              </button>
+              <div className="flex justify-between items-center px-2">
+                <span className="text-xs text-slate-400 font-semibold cursor-pointer hover:text-indigo-600" onClick={() => handleLogin('Admin OB', '0000')}>Masuk OB</span>
+                <span className="text-xs text-slate-400 font-semibold">MakanBang v2.5</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* SCREEN 2: LOGIN */}
+        {currentScreen === 'login' && (
+          <div className="flex-1 flex flex-col justify-between p-8 pt-16 bg-gradient-to-b from-[#FFF5E6] via-white to-[#F7F8FC]">
+            <button onClick={() => setCurrentScreen('onboarding')} className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm text-slate-800 border self-start">
+              <ArrowLeft size={18} />
+            </button>
+
+            <div className="my-auto space-y-6">
+              <div>
+                <span className="text-xs font-extrabold text-amber-600 bg-amber-100 px-3 py-1 rounded-full uppercase tracking-wider">Level 1: Lapar</span>
+                <h2 className="text-2xl font-black text-slate-800 mt-2">Daftarkan Karaktermu!</h2>
+                <p className="text-xs text-slate-500 leading-relaxed">Masukkan identitas panggilan kantormu agar OB tidak salah antar makanan.</p>
+              </div>
+
+              <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-xl space-y-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nama Panggilan Kantor</label>
+                  <input 
+                    type="text" 
+                    placeholder="Misal: Mas Wahyu, Mbak Isna" 
+                    id="login-name"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white p-3.5 rounded-2xl text-xs focus:outline-none transition-all duration-200 text-slate-800 font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nomor Handphone</label>
+                  <input 
+                    type="text" 
+                    placeholder="Masukkan No. HP Anda..." 
+                    id="login-phone"
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white p-3.5 rounded-2xl text-xs focus:outline-none transition-all duration-200 text-slate-800 font-bold"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <button 
+              onClick={() => {
+                const name = document.getElementById('login-name')?.value || 'Karyawan Keren';
+                const phone = document.getElementById('login-phone')?.value || '123';
+                handleLogin(name, phone);
+              }}
+              className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 text-white font-extrabold py-4 rounded-2xl shadow-lg shadow-indigo-600/20 hover:from-indigo-700 active:scale-[0.98] transition duration-200 text-xs"
+            >
+              Masuk ke Dashboard 🚀
+            </button>
+          </div>
+        )}
+
+        {/* SCREEN 3: USER DASHBOARD (Kombinasi Sempurna Gambar 1 & 2) */}
+        {currentScreen === 'user_dashboard' && (
+          <div className="flex-1 flex flex-col bg-[#F7F8FC] pt-12">
+            {/* Header Profil & Level (Gambar 1) */}
+            <div className="px-5 pb-4 flex justify-between items-center bg-white border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-full bg-indigo-100 border-2 border-indigo-500 flex items-center justify-center text-lg shadow-sm">
+                  👨‍💻
+                </div>
+                <div>
+                  <h4 className="font-black text-xs text-slate-800">Hello, {currentUser?.name}</h4>
+                  <p className="text-[9px] text-indigo-600 font-semibold flex items-center gap-0.5"><Award size={10}/> Level 1: Lapar Berat</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button className="w-8 h-8 bg-slate-50 border rounded-full flex items-center justify-center text-slate-600 relative">
+                  <Bell size={14} />
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full"></span>
+                </button>
+                <button onClick={handleLogout} className="w-8 h-8 bg-red-50 hover:bg-red-100 rounded-full flex items-center justify-center text-red-500 transition">
+                  <LogOut size={14} />
+                </button>
+              </div>
+            </div>
+
+            {/* Level Progress Bar (Mengambil ide Gamifikasi dari Gambar 1) */}
+            <div className="px-5 pt-4">
+              <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white p-4 rounded-3xl shadow-md relative overflow-hidden">
+                <div className="absolute right-2 bottom-2 text-5xl opacity-10">🏆</div>
+                <div className="flex justify-between items-center text-[10px] font-extrabold tracking-wider text-indigo-200">
+                  <span>EXP PETUALANGAN</span>
+                  <span>10% menuju Kenyang</span>
+                </div>
+                {/* Progress Bar */}
+                <div className="w-full bg-indigo-900/50 h-3 rounded-full mt-2 overflow-hidden p-0.5 border border-indigo-500/20">
+                  <div className="bg-gradient-to-r from-amber-400 to-amber-300 h-full rounded-full transition-all duration-500" style={{ width: '10%' }}></div>
+                </div>
+                <p className="text-[9px] text-amber-300 font-medium mt-2">🔥 Tips: Pesan sebelum pukul {session.endTime} agar petualangan sukses!</p>
+              </div>
+            </div>
+
+            {/* Kategori Makanan Quick Filter (Ide Kategori Lingkaran Gambar 1) */}
+            <div className="px-5 pt-5 shrink-0">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Kategori Kuliner</h3>
+                <span className="text-[10px] font-bold text-indigo-600">Lihat Semua</span>
+              </div>
+              <div className="flex gap-4 overflow-x-auto scrollbar-none pb-2">
+                {[
+                  { icon: '🍛', name: 'Nasi Rames' },
+                  { icon: '🍗', name: 'Ayam Geprek' },
+                  { icon: '🍜', name: 'Soto Hangat' },
+                  { icon: '🍹', name: 'Minuman' },
+                ].map((cat, i) => (
+                  <div key={i} className="flex flex-col items-center gap-1.5 cursor-pointer group flex-shrink-0">
+                    <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-xl shadow-sm border border-slate-100 group-hover:border-indigo-500 transition duration-200">
+                      {cat.icon}
+                    </div>
+                    <span className="text-[9px] font-bold text-slate-500">{cat.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Restoran Terbuka (Menggunakan Opsi Petualangan dari Gambar 2) */}
+            <div className="flex-1 px-5 pt-4 overflow-y-auto pb-24 space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Misi Makan Siang Aktif</h3>
+                <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full flex items-center gap-1">
+                  <Clock size={10} /> Sisa {session.endTime}
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                {restaurants.map(resto => (
+                  <div key={resto.id} className="bg-white rounded-[24px] overflow-hidden border border-slate-150 shadow-sm hover:shadow-md transition duration-200">
+                    <div className="relative h-28">
+                      <img src={resto.image} alt={resto.name} className="w-full h-full object-cover brightness-90" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent p-4 flex flex-col justify-between">
+                        <span className="self-end bg-amber-500 text-slate-950 font-black text-[8px] py-1 px-2.5 rounded-full uppercase tracking-wider">
+                          {resto.tag}
+                        </span>
+                        <div>
+                          <span className="text-[8px] font-bold text-amber-400 uppercase tracking-wider">REKOMENDASI OB</span>
+                          <h4 className="text-sm font-black text-white">{resto.name}</h4>
+                        </div>
+                      </div>
+                    </div>
+                    {/* Detail Informasi Tiket Perjalanan (Gambar 2 Vibe) */}
+                    <div className="p-4 flex justify-between items-center text-xs">
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-slate-400 flex items-center gap-1"><MapPin size={10} /> {resto.distance}</p>
+                        <p className="text-[10px] text-slate-400 flex items-center gap-1"><Clock size={10} /> Est. Pengiriman: {resto.time}</p>
+                      </div>
+                      <button 
+                        onClick={() => viewRestoDetail(resto)}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2 px-4 rounded-xl shadow-md text-[10px] flex items-center gap-1 transition"
+                      >
+                        Pilih Menu <ChevronRight size={10} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Floating Navigasi Bawah (Persis Gambar 1) */}
+            <div className="absolute bottom-4 left-4 right-4 bg-slate-950/90 backdrop-blur-md rounded-[24px] p-2.5 flex justify-around items-center text-slate-400 z-30 shadow-lg">
+              <button className="flex flex-col items-center gap-0.5 text-amber-400">
+                <Compass size={18} />
+                <span className="text-[8px] font-bold uppercase">Explore</span>
+              </button>
+              <button onClick={() => setCurrentScreen('admin_dashboard')} className="flex flex-col items-center gap-0.5 hover:text-white transition">
+                <Store size={18} />
+                <span className="text-[8px] font-bold uppercase">OB Panel</span>
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Success / Payment Modal */}
-      {showSuccess && (
-        <div className="absolute inset-0 z-50 bg-white flex flex-col justify-center items-center p-6 text-center animate-in fade-in zoom-in duration-300">
-          <div className="w-24 h-24 bg-amber-100 text-amber-500 rounded-full flex items-center justify-center mb-6 shadow-inner">
-            <Check size={48} strokeWidth={3} />
-          </div>
-          <h2 className="text-2xl font-extrabold text-slate-800 mb-2">Pesanan Masuk!</h2>
-          <p className="text-gray-500 mb-8">OB kita sedang mencatat pesananmu dengan sepenuh hati.</p>
-          
-          <div className="w-full bg-slate-50 border border-slate-200 p-6 rounded-2xl shadow-sm mb-8 text-left">
-            <p className="text-sm font-bold text-slate-500 mb-2 uppercase tracking-wider">Info Transfer</p>
-            <p className="text-xs text-gray-400 mb-1">Silakan transfer total <strong className="text-slate-800">{formatRp(cartTotal)}</strong> ke:</p>
-            <p className="font-mono text-lg font-bold text-amber-600 bg-amber-50 p-3 rounded-lg border border-amber-200 my-2 select-all">
-              {session.bankAccount}
-            </p>
-            <p className="text-xs text-gray-400 italic">Tunjukkin bukti transfer ke OB kalau udah ya!</p>
-          </div>
+        {/* SCREEN 4: RESTORAN DETAIL (Gaya Rencana Wisata Gambar 2) */}
+        {currentScreen === 'restaurant_detail' && (
+          <div className="flex-1 flex flex-col bg-[#F7F8FC] pt-12">
+            {/* Header / Hero Cover (Gambar 2) */}
+            <div className="relative h-44 shrink-0">
+              <img src={selectedResto.image} alt={selectedResto.name} className="w-full h-full object-cover brightness-75" />
+              <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/80 p-4 flex flex-col justify-between">
+                <button 
+                  onClick={() => setCurrentScreen('user_dashboard')} 
+                  className="w-9 h-9 bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white border border-white/20 self-start"
+                >
+                  <ArrowLeft size={16} />
+                </button>
+                <div>
+                  <span className="text-[8px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-0.5"><Star size={10} className="fill-amber-400 text-amber-400"/> {selectedResto.rating} ({selectedResto.reviews} ulasan)</span>
+                  <h3 className="text-xl font-black text-white">{selectedResto.name}</h3>
+                  <p className="text-[10px] text-slate-300">{selectedResto.category}</p>
+                </div>
+              </div>
+            </div>
 
-          <button 
-            onClick={() => setShowSuccess(false)}
-            className="bg-slate-800 text-white w-full py-4 rounded-xl font-bold shadow-md"
-          >
-            Siap, Laksanakan!
-          </button>
-        </div>
-      )}
-    </>
+            {/* Menu List */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-24">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Pilih Perlengkapan Energi Makan Siang</p>
+              {menus.filter(m => m.restaurant_id === selectedResto.id).map(menu => {
+                const cartItem = cart.find(c => c.menuId === menu.id);
+                const qty = cartItem ? cartItem.qty : 0;
+                return (
+                  <div key={menu.id} className={`bg-white rounded-2xl p-4 border transition duration-200 ${qty > 0 ? 'border-indigo-500 ring-2 ring-indigo-500/10' : 'border-slate-100'}`}>
+                    <div className="flex justify-between items-start gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <h4 className="font-extrabold text-xs text-slate-800">{menu.name}</h4>
+                          {menu.tag && <span className="text-[8px] font-black bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-md uppercase">{menu.tag}</span>}
+                        </div>
+                        <p className="text-[10px] text-slate-400 leading-normal line-clamp-2">{menu.desc}</p>
+                        <p className="text-xs font-black text-indigo-600 mt-2">{formatRp(menu.price)}</p>
+                      </div>
+
+                      {/* Controls */}
+                      {qty === 0 ? (
+                        <button 
+                          onClick={() => handleUpdateCart(menu, 1)}
+                          className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-extrabold text-[10px] py-1.5 px-3.5 rounded-lg border border-indigo-200 transition"
+                        >
+                          Pilih
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-2 bg-slate-50 border p-1 rounded-lg">
+                          <button onClick={() => handleUpdateCart(menu, -1)} className="w-6 h-6 bg-white border text-slate-800 rounded flex items-center justify-center font-bold text-xs">-</button>
+                          <span className="text-xs font-black w-4 text-center">{qty}</span>
+                          <button onClick={() => handleUpdateCart(menu, 1)} className="w-6 h-6 bg-indigo-600 text-white rounded flex items-center justify-center font-bold text-xs">+</button>
+                        </div>
+                      )}
+                    </div>
+
+                    {qty > 0 && (
+                      <div className="mt-3 pt-3 border-t border-slate-100">
+                        <input 
+                          type="text" 
+                          placeholder="Tambahkan instruksi kustom (Mis: Ekstra pedas)..."
+                          value={cartItem.notes}
+                          onChange={(e) => handleUpdateNotes(menu.id, e.target.value)}
+                          className="w-full bg-slate-50 border p-2 rounded-lg text-[9px] text-slate-600 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Bottom Action Sheet (Vibe Rencana Wisata Gambar 2) */}
+            {cartItemsCount > 0 && (
+              <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-slate-150 p-4 rounded-t-[32px] shadow-2xl z-40">
+                <div className="flex justify-between items-center mb-4">
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Keranjang Petualangan</span>
+                    <span className="text-sm font-black text-slate-800">{cartItemsCount} Item terpilih</span>
+                  </div>
+                  <span className="text-lg font-black text-indigo-600">{formatRp(cartTotal)}</span>
+                </div>
+                <button 
+                  onClick={handleCheckout}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3.5 rounded-2xl text-xs flex items-center justify-center gap-1.5 transition shadow-lg shadow-indigo-600/20"
+                >
+                  Selesaikan Rencana Makan <ChevronRight size={14} />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* SCREEN 5: RECEIPT TICKET (Gaya Boarding Pass Gambar 2) */}
+        {currentScreen === 'ticket_view' && (
+          <div className="flex-1 flex flex-col bg-slate-900 justify-between p-6 pt-16 text-white">
+            <div className="text-center space-y-1">
+              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Misi Makan Siang Sukses!</span>
+              <h3 className="text-xl font-black">Karcis Pembayaran</h3>
+            </div>
+
+            {/* Tiket Boarding Pass Premium (Gambar 2 Vibe) */}
+            <div className="bg-white text-slate-800 rounded-[32px] overflow-hidden shadow-2xl my-auto">
+              {/* Header Tiket */}
+              <div className="bg-indigo-600 text-white p-5 flex justify-between items-center relative">
+                <div className="absolute -bottom-3 -left-3 w-6 h-6 bg-slate-900 rounded-full"></div>
+                <div className="absolute -bottom-3 -right-3 w-6 h-6 bg-slate-900 rounded-full"></div>
+                
+                <div>
+                  <span className="text-[8px] font-bold text-indigo-200 uppercase tracking-wider">KARYAWAN</span>
+                  <h4 className="font-black text-sm">{currentUser?.name}</h4>
+                </div>
+                <div className="text-right">
+                  <span className="text-[8px] font-bold text-indigo-200 uppercase tracking-wider">OB PENANGGUNG JAWAB</span>
+                  <h4 className="font-black text-sm">Pak Joko</h4>
+                </div>
+              </div>
+
+              {/* Rincian Rute Pengantaran Simbolik */}
+              <div className="p-5 border-b border-dashed border-slate-200 relative">
+                <div className="flex justify-between items-center text-xs">
+                  <div>
+                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">DARI</span>
+                    <span className="font-black text-slate-800">{selectedResto.name}</span>
+                  </div>
+                  <div className="flex-1 px-4 flex flex-col items-center">
+                    <Navigation size={14} className="text-indigo-600 rotate-90 animate-pulse" />
+                    <div className="w-full border-t border-slate-300 border-dashed my-1"></div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">KE</span>
+                    <span className="font-black text-slate-800">Meja Kerja Anda</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Rincian Item */}
+              <div className="p-5 space-y-3">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">MENU YANG DIPESAN</p>
+                <div className="space-y-2 max-h-24 overflow-y-auto">
+                  {cart.map((item, i) => (
+                    <div key={i} className="flex justify-between text-xs font-semibold">
+                      <span className="text-slate-600">{item.qty}x {item.name}</span>
+                      <span className="text-slate-800 font-bold">{formatRp(item.price * item.qty)}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Harga Akhir */}
+                <div className="pt-3 border-t border-slate-100 flex justify-between items-center">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase">TOTAL TAGIHAN</span>
+                  <span className="text-base font-black text-indigo-600">{formatRp(cartTotal)}</span>
+                </div>
+
+                {/* Informasi Copy Rekening */}
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-left mt-2">
+                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mb-1">Transfer ke Rekening OB</p>
+                  <div className="flex justify-between items-center">
+                    <span className="font-mono text-xs font-bold text-indigo-700">{session.bankAccount}</span>
+                    <button 
+                      onClick={() => navigator.clipboard.writeText(session.bankAccount)}
+                      className="p-1 hover:bg-slate-200 rounded text-slate-500"
+                    >
+                      <Copy size={12} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <button 
+              onClick={() => {
+                setCart([]);
+                setCurrentScreen('user_dashboard');
+              }}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-4 rounded-2xl text-xs shadow-lg transition"
+            >
+              Kembali ke Beranda Petualangan
+            </button>
+          </div>
+        )}
+
+        {/* SCREEN 6: ADMIN DASHBOARD */}
+        {currentScreen === 'admin_dashboard' && (
+          <div className="flex-1 flex flex-col bg-[#F7F8FC] pt-12">
+            <div className="bg-slate-900 text-white p-4 flex justify-between items-center shrink-0">
+              <h1 className="font-black text-sm tracking-tight flex items-center gap-1"><Store size={16}/> OB Panel Kontrol</h1>
+              <button onClick={() => setCurrentScreen('user_dashboard')} className="text-xs bg-slate-800 px-3 py-1.5 rounded-lg text-slate-300 hover:text-white">User Mode</button>
+            </div>
+
+            <div className="p-5 flex-1 overflow-y-auto space-y-4">
+              <div className="bg-gradient-to-br from-indigo-900 to-indigo-800 text-white p-5 rounded-3xl shadow-lg flex justify-between items-center relative overflow-hidden">
+                <div>
+                  <p className="text-slate-300 text-[9px] font-bold uppercase tracking-wider mb-1">Total Pemasukan Misi Makan</p>
+                  <h2 className="text-2xl font-black text-amber-400">Rp 44.000</h2>
+                  <p className="text-[9px] text-slate-300 mt-1">Total Pesanan Terdaftar: <span className="font-bold text-white">2 Karyawan</span></p>
+                </div>
+                <div className="w-12 h-12 bg-indigo-500/10 text-indigo-400 rounded-2xl flex items-center justify-center border border-indigo-500/20 z-10 shadow-inner">
+                  <Wallet size={24} />
+                </div>
+              </div>
+
+              {/* Status Lapak Toggle */}
+              <div className="bg-white p-5 rounded-3xl border border-slate-150 space-y-4 shadow-sm">
+                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Konfigurasi Lapak Aktif</h3>
+                <div className="flex justify-between items-center p-3 border rounded-2xl">
+                  <div>
+                    <span className="font-bold text-xs text-slate-800 block">Status Lapak</span>
+                    <span className="text-[10px] text-slate-400">Izinkan Karyawan Order</span>
+                  </div>
+                  <button 
+                    onClick={() => setSession({...session, isOpen: !session.isOpen})}
+                    className={`font-bold text-xs py-2 px-4 rounded-xl transition ${session.isOpen ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}
+                  >
+                    {session.isOpen ? 'Terbuka' : 'Tertutup'}
+                  </button>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Batas Waktu Order</label>
+                  <input 
+                    type="time" 
+                    value={session.endTime} 
+                    onChange={e => setSession({...session, endTime: e.target.value})}
+                    className="w-full bg-slate-50 border p-3 rounded-2xl text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {/* Rekap Order Masuk */}
+              <div className="space-y-2">
+                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Daftar Order Aktif</h3>
+                {orders.map(order => (
+                  <div key={order.id} className="bg-white p-4 rounded-2xl border border-slate-150 shadow-sm text-xs">
+                    <div className="flex justify-between items-center border-b pb-2 mb-2">
+                      <span className="font-bold text-slate-800">{order.userName}</span>
+                      <span className="font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-lg">{formatRp(order.total)}</span>
+                    </div>
+                    <ul className="space-y-1 text-[10px] text-slate-500 font-medium">
+                      {order.items.map((item, i) => (
+                        <li key={i}>{item.qty}x {item.name} {item.notes && <span className="text-amber-600 italic">("{item.notes}")</span>}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Bottom Nav Admin */}
+            <button 
+              onClick={handleLogout} 
+              className="m-5 mt-auto bg-slate-900 text-white font-bold py-3.5 rounded-2xl text-xs flex items-center justify-center gap-1.5 hover:bg-slate-800 transition"
+            >
+              <LogOut size={14}/> Keluar Panel Admin
+            </button>
+          </div>
+        )}
+
+      </div>
+    </div>
   );
 }
