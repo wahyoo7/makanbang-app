@@ -1,14 +1,15 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Utensils, Wallet, Users, Store, List, 
-  ShoppingCart, Plus, Minus, Check, LogOut, 
-  AlertCircle, ChevronRight, Receipt, Clock,
-  Sparkles, Star, MessageSquare, Copy, ChevronDown,
+  Plus, Minus, Check, LogOut, 
+  ChevronRight, Receipt, Clock,
+  Sparkles, Star, MessageSquare, Copy,
   TrendingUp, MapPin, Navigation, Compass, Award,
-  Flame, Bell, Search, Filter, ShieldCheck, ArrowLeft
+  Flame, Bell, ShieldCheck, ArrowLeft, Trophy, History,
+  Shield, Zap, User, Heart, Target, Sparkle
 } from 'lucide-react';
 
-// --- DATABASE SIMULASI (TEMA ADVENTURE FOOD) ---
+// --- MOCK DATABASE (DENGAN SKENARIO GELAR HARI INI & SEBULAN) ---
 const initialRestaurants = [
   { 
     id: 1, 
@@ -56,22 +57,76 @@ const initialMenus = [
 ];
 
 const initialOrders = [
+  // --- ORDER AKTIF HARI INI ---
   {
-    id: 1,
+    id: 1684395000001, // Paling Pagi (Diet Mulai Besok)
+    userName: "Mbak Sarah (Finance)",
+    total: 39000,
+    date: 'Hari Ini',
+    items: [
+      { menuId: 1, name: 'Nasi Telur Dadar + Orek Tempe', price: 15000, qty: 1, notes: "" },
+      { menuId: 4, name: 'Paket Geprek Lava Mozzarella', price: 25000, qty: 1, notes: "" }
+    ],
+    status: 'Selesai'
+  },
+  {
+    id: 1684395200000,
     userName: "Mbak Rini (HRD)",
     total: 19000,
+    date: 'Hari Ini',
     items: [
       { menuId: 1, name: 'Nasi Telur Dadar + Orek Tempe', price: 15000, qty: 1, notes: "Oreknya basah ya mas" },
       { menuId: 3, name: 'Es Teh Manis Jumbo Booster', price: 4000, qty: 1, notes: "" },
-    ]
+    ],
+    status: 'Diproses OB'
+  },
+  {
+    id: 1684395500000, // Pemesan Termahal Hari Ini (CEO of Flexing Food)
+    userName: "Mas Bimo (IT Support)",
+    total: 89000,
+    date: 'Hari Ini',
+    items: [
+      { menuId: 4, name: 'Paket Geprek Lava Mozzarella', price: 25000, qty: 3, notes: "Sambal level 5!" },
+      { menuId: 5, name: 'Jamur Crispy Kriuk Nagih', price: 10000, qty: 1, notes: "" },
+      { menuId: 3, name: 'Es Teh Manis Jumbo Booster', price: 4000, qty: 1, notes: "" }
+    ],
+    status: 'Menunggu Pembayaran'
+  },
+  {
+    id: 1684395999999, // Pemesan Terakhir Hari Ini (The Last Survivor)
+    userName: "Mas Adi (Copywriter)",
+    total: 22000,
+    date: 'Hari Ini',
+    items: [
+      { menuId: 7, name: 'Soto Sapi Kuah Bening', price: 22000, qty: 1, notes: "Kuah banyak" }
+    ],
+    status: 'Menunggu Pembayaran'
+  },
+
+  // --- RIWAYAT SEBULAN LALU (Pemicu Gelar Tambahan) ---
+  {
+    id: 1,
+    userName: "Mas Wahyu (Desainer)", // Total Spend Termahal Sebulan (Selera Elit)
+    total: 450000,
+    date: '10 Mei 2026',
+    items: [{ menuId: 7, name: 'Soto Sapi Premium Party Box', price: 22000, qty: 20, notes: "" }], // Banyak Item sekaligus (The Avengers Team & Black Hole Belly)
+    status: 'Selesai'
   },
   {
     id: 2,
     userName: "Mas Bimo (IT Support)",
-    total: 25000,
-    items: [
-      { menuId: 4, name: 'Paket Geprek Lava Mozzarella', price: 25000, qty: 1, notes: "Sambal level 5!" },
-    ]
+    total: 220000,
+    date: '12 Mei 2026',
+    items: [{ menuId: 4, name: 'Geprek Lava x8 + Jamur x2', price: 220000, qty: 1, notes: "" }],
+    status: 'Selesai'
+  },
+  {
+    id: 3,
+    userName: "Mbak Rini (HRD)",
+    total: 150000,
+    date: '14 Mei 2026',
+    items: [{ menuId: 1, name: 'Nasi Telur Dadar + Orek Tempe', price: 15000, qty: 10, notes: "" }],
+    status: 'Selesai'
   }
 ];
 
@@ -79,8 +134,9 @@ const formatRp = (num) => 'Rp ' + num.toLocaleString('id-ID');
 
 export default function App() {
   // Navigation Screens State
-  // "onboarding" | "login" | "user_dashboard" | "admin_dashboard" | "restaurant_detail" | "ticket_view"
   const [currentScreen, setCurrentScreen] = useState('onboarding');
+  const [userTab, setUserTab] = useState('explore'); // "explore" | "my_orders" | "leaderboard"
+  const [leaderboardSubTab, setLeaderboardSubTab] = useState('rank'); // "rank" | "badges"
   
   // App States
   const [currentUser, setCurrentUser] = useState(null);
@@ -110,6 +166,7 @@ export default function App() {
       setCurrentScreen('admin_dashboard');
     } else {
       setCurrentScreen('user_dashboard');
+      setUserTab('explore');
     }
   };
 
@@ -147,47 +204,143 @@ export default function App() {
   const handleCheckout = () => {
     setOrders([...orders, {
       id: Date.now(),
-      userName: currentUser.name + " (You)",
+      userName: currentUser.name,
       items: cart,
-      total: cartTotal
+      total: cartTotal,
+      date: 'Hari Ini',
+      status: 'Menunggu Pembayaran'
     }]);
-    setCurrentScreen('ticket_view');
+    setCart([]);
+    setCurrentScreen('user_dashboard');
+    setUserTab('my_orders');
   };
+
+  // --- ENGINE KALKULASI GELAR OTOMATIS (SULTAN ENGINE) ---
+  const dynamicBadges = useMemo(() => {
+    const userStats = {};
+    const todayOrders = orders.filter(o => o.date === 'Hari Ini');
+
+    // Proses akumulasi data per user
+    orders.forEach(o => {
+      if (!userStats[o.userName]) {
+        userStats[o.userName] = {
+          name: o.userName,
+          totalSpend: 0,
+          totalQty: 0,
+          maxSingleOrderQty: 0,
+          maxSingleOrderSpend: 0,
+          orderCount: 0,
+          orders: []
+        };
+      }
+
+      let orderQty = o.items.reduce((sum, item) => sum + item.qty, 0);
+      userStats[o.userName].totalSpend += o.total;
+      userStats[o.userName].totalQty += orderQty;
+      userStats[o.userName].orderCount += 1;
+      userStats[o.userName].orders.push(o);
+
+      if (orderQty > userStats[o.userName].maxSingleOrderQty) {
+        userStats[o.userName].maxSingleOrderQty = orderQty;
+      }
+      if (o.total > userStats[o.userName].maxSingleOrderSpend) {
+        userStats[o.userName].maxSingleOrderSpend = o.total;
+      }
+    });
+
+    const userList = Object.values(userStats);
+
+    const getTopUser = (list, filterFn, scoreFn) => {
+      const filtered = list.filter(filterFn);
+      if (filtered.length === 0) return { name: '-', score: 0 };
+      let top = filtered[0];
+      filtered.forEach(u => {
+        if (scoreFn(u) > scoreFn(top)) top = u;
+      });
+      return { name: top.name, score: scoreFn(top) };
+    };
+
+    // 1. The Mukbang Master 👑 (Pernah pesan > 3 menu/item dalam 1 order)
+    const mukbangMaster = getTopUser(userList, u => u.maxSingleOrderQty > 3, u => u.maxSingleOrderQty);
+
+    // 2. Selera Elit 🌾 (Total belanja sebulan paling tinggi)
+    const seleraElit = getTopUser(userList, u => true, u => u.totalSpend);
+
+    // 3. Black Hole Belly 🌌 (Paling banyak makan secara jumlah porsi total)
+    const blackHoleBelly = getTopUser(userList, u => true, u => u.totalQty);
+
+    // 4. The Avengers Team (Sering pesan > 5 item sekaligus kayak mau ngasih makan superhero)
+    const avengersTeam = getTopUser(userList, u => u.maxSingleOrderQty > 5, u => u.maxSingleOrderQty);
+
+    // 5. Investor Utama Resto 💼 (Simulasi pembelanja terbanyak mingguan)
+    const investorUtama = getTopUser(userList, u => true, u => u.totalSpend * 0.9);
+
+    // 6. CEO of Flexing Food (Pemesan termahal khusus HARI INI)
+    let ceoFlexing = { name: '-', score: 0 };
+    if (todayOrders.length > 0) {
+      todayOrders.forEach(o => {
+        if (o.total > ceoFlexing.score) {
+          ceoFlexing = { name: o.userName, score: o.total };
+        }
+      });
+    }
+
+    // 7. The Last Survivor (Orang terakhir yang memesan hari ini)
+    let lastSurvivor = { name: '-', time: '-' };
+    if (todayOrders.length > 0) {
+      const sortedToday = [...todayOrders].sort((a, b) => b.id - a.id);
+      lastSurvivor = { name: sortedToday[0].userName };
+    }
+
+    // 8. Diet Mulai Besok (Paling gaspol pesan duluan hari ini)
+    let dietBesok = { name: '-', time: '-' };
+    if (todayOrders.length > 0) {
+      const sortedToday = [...todayOrders].sort((a, b) => a.id - b.id);
+      dietBesok = { name: sortedToday[0].userName };
+    }
+
+    return {
+      mukbangMaster,
+      seleraElit,
+      blackHoleBelly,
+      avengersTeam,
+      investorUtama,
+      ceoFlexing,
+      lastSurvivor,
+      dietBesok
+    };
+  }, [orders]);
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center font-sans antialiased p-4">
       
-      {/* Container Device-Mockup (Sangat dioptimalkan untuk HP) */}
+      {/* Device Mockup */}
       <div className="w-full max-w-[410px] bg-[#F7F8FC] h-[820px] flex flex-col relative shadow-[0_24px_60px_rgba(0,0,0,0.6)] rounded-[48px] border-[10px] border-slate-950 overflow-hidden">
         
-        {/* Notch Kamera Depan HP */}
+        {/* Notch */}
         <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-6 bg-slate-950 rounded-b-2xl z-50 flex items-center justify-center">
           <div className="w-12 h-1.5 bg-slate-800 rounded-full"></div>
         </div>
 
-        {/* SCREEN 1: ONBOARDING / ADVENTURE WELCOME (Kombinasi Gambar 1 & 2) */}
+        {/* SCREEN 1: ONBOARDING */}
         {currentScreen === 'onboarding' && (
           <div className="flex-1 flex flex-col justify-between p-8 pt-16 bg-gradient-to-b from-[#E2E6FF] via-[#EAEFFF] to-[#F5F8FF]">
             <div className="flex justify-between items-center">
-              <span className="text-xs font-black text-indigo-600 tracking-wider">9:40 PM</span>
+              <span className="text-xs font-black text-indigo-600 tracking-wider">09:40 WIB</span>
               <div className="flex gap-1 items-center">
                 <div className="w-3 h-3 rounded-full bg-indigo-500"></div>
                 <div className="w-1.5 h-1.5 rounded-full bg-indigo-300"></div>
               </div>
             </div>
 
-            {/* Ilustrasi Utama 3D-Look */}
             <div className="my-auto text-center space-y-6">
               <div className="relative inline-block mx-auto">
-                {/* Bubble Hiasan */}
                 <div className="absolute -top-6 -left-6 w-14 h-14 bg-amber-400 rounded-2xl flex items-center justify-center text-slate-900 shadow-md font-black text-lg transform -rotate-12 animate-bounce">
                   Hi! 👋
                 </div>
                 <div className="absolute -bottom-4 -right-4 w-16 h-16 bg-indigo-500 rounded-3xl flex items-center justify-center text-white shadow-lg transform rotate-12">
                   <Flame size={28} className="animate-pulse" />
                 </div>
-                
-                {/* Gambar Karakter / Makanan (Menggunakan Avatar/Simbol Premium) */}
                 <div className="w-48 h-48 rounded-[40px] bg-gradient-to-tr from-indigo-200 to-indigo-100 flex items-center justify-center shadow-inner border-4 border-white">
                   <span className="text-8xl">🍱</span>
                 </div>
@@ -201,12 +354,11 @@ export default function App() {
                   </span>
                 </h1>
                 <p className="text-xs text-slate-500 max-w-[250px] mx-auto leading-relaxed">
-                  Pesan makan siang bersama rekan kantor dengan menyenangkan, cepat, & terkoordinasi.
+                  Pesan makan siang kantor dengan asyik, raih gelar terhormat, dan kalahkan para Sultan Makan!
                 </p>
               </div>
             </div>
 
-            {/* Tombol Aksi Bawah */}
             <div className="space-y-3">
               <button 
                 onClick={handleStartAdventure}
@@ -219,7 +371,7 @@ export default function App() {
               </button>
               <div className="flex justify-between items-center px-2">
                 <span className="text-xs text-slate-400 font-semibold cursor-pointer hover:text-indigo-600" onClick={() => handleLogin('Admin OB', '0000')}>Masuk OB</span>
-                <span className="text-xs text-slate-400 font-semibold">MakanBang v2.5</span>
+                <span className="text-xs text-slate-400 font-semibold">MakanBang v3.5</span>
               </div>
             </div>
           </div>
@@ -244,8 +396,9 @@ export default function App() {
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nama Panggilan Kantor</label>
                   <input 
                     type="text" 
-                    placeholder="Misal: Mas Wahyu, Mbak Isna" 
+                    placeholder="Misal: Mas Wahyu, Mbak Sarah" 
                     id="login-name"
+                    defaultValue="Mas Wahyu"
                     className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white p-3.5 rounded-2xl text-xs focus:outline-none transition-all duration-200 text-slate-800 font-bold"
                   />
                 </div>
@@ -255,6 +408,7 @@ export default function App() {
                     type="text" 
                     placeholder="Masukkan No. HP Anda..." 
                     id="login-phone"
+                    defaultValue="0812345"
                     className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white p-3.5 rounded-2xl text-xs focus:outline-none transition-all duration-200 text-slate-800 font-bold"
                   />
                 </div>
@@ -263,7 +417,7 @@ export default function App() {
 
             <button 
               onClick={() => {
-                const name = document.getElementById('login-name')?.value || 'Karyawan Keren';
+                const name = document.getElementById('login-name')?.value || 'Mas Wahyu';
                 const phone = document.getElementById('login-phone')?.value || '123';
                 handleLogin(name, phone);
               }}
@@ -274,119 +428,416 @@ export default function App() {
           </div>
         )}
 
-        {/* SCREEN 3: USER DASHBOARD (Kombinasi Sempurna Gambar 1 & 2) */}
+        {/* SCREEN 3: USER DASHBOARD */}
         {currentScreen === 'user_dashboard' && (
           <div className="flex-1 flex flex-col bg-[#F7F8FC] pt-12">
-            {/* Header Profil & Level (Gambar 1) */}
+            
+            {/* Profil Header */}
             <div className="px-5 pb-4 flex justify-between items-center bg-white border-b border-slate-100">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-full bg-indigo-100 border-2 border-indigo-500 flex items-center justify-center text-lg shadow-sm">
                   👨‍💻
                 </div>
                 <div>
-                  <h4 className="font-black text-xs text-slate-800">Hello, {currentUser?.name}</h4>
-                  <p className="text-[9px] text-indigo-600 font-semibold flex items-center gap-0.5"><Award size={10}/> Level 1: Lapar Berat</p>
+                  <h4 className="font-black text-xs text-slate-800">{currentUser?.name}</h4>
+                  <p className="text-[9px] text-indigo-600 font-semibold flex items-center gap-0.5">
+                    <Award size={10}/> Gelar Makan: {orders.filter(o => o.userName === currentUser?.name).length >= 5 ? 'Sultan Kolosal' : 'Petualang Rasa'}
+                  </p>
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button className="w-8 h-8 bg-slate-50 border rounded-full flex items-center justify-center text-slate-600 relative">
-                  <Bell size={14} />
-                  <span className="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full"></span>
-                </button>
-                <button onClick={handleLogout} className="w-8 h-8 bg-red-50 hover:bg-red-100 rounded-full flex items-center justify-center text-red-500 transition">
-                  <LogOut size={14} />
-                </button>
-              </div>
+              <button onClick={handleLogout} className="w-8 h-8 bg-red-50 hover:bg-red-100 rounded-full flex items-center justify-center text-red-500 transition">
+                <LogOut size={14} />
+              </button>
             </div>
 
-            {/* Level Progress Bar (Mengambil ide Gamifikasi dari Gambar 1) */}
-            <div className="px-5 pt-4">
-              <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white p-4 rounded-3xl shadow-md relative overflow-hidden">
-                <div className="absolute right-2 bottom-2 text-5xl opacity-10">🏆</div>
-                <div className="flex justify-between items-center text-[10px] font-extrabold tracking-wider text-indigo-200">
-                  <span>EXP PETUALANGAN</span>
-                  <span>10% menuju Kenyang</span>
-                </div>
-                {/* Progress Bar */}
-                <div className="w-full bg-indigo-900/50 h-3 rounded-full mt-2 overflow-hidden p-0.5 border border-indigo-500/20">
-                  <div className="bg-gradient-to-r from-amber-400 to-amber-300 h-full rounded-full transition-all duration-500" style={{ width: '10%' }}></div>
-                </div>
-                <p className="text-[9px] text-amber-300 font-medium mt-2">🔥 Tips: Pesan sebelum pukul {session.endTime} agar petualangan sukses!</p>
-              </div>
-            </div>
-
-            {/* Kategori Makanan Quick Filter (Ide Kategori Lingkaran Gambar 1) */}
-            <div className="px-5 pt-5 shrink-0">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Kategori Kuliner</h3>
-                <span className="text-[10px] font-bold text-indigo-600">Lihat Semua</span>
-              </div>
-              <div className="flex gap-4 overflow-x-auto scrollbar-none pb-2">
-                {[
-                  { icon: '🍛', name: 'Nasi Rames' },
-                  { icon: '🍗', name: 'Ayam Geprek' },
-                  { icon: '🍜', name: 'Soto Hangat' },
-                  { icon: '🍹', name: 'Minuman' },
-                ].map((cat, i) => (
-                  <div key={i} className="flex flex-col items-center gap-1.5 cursor-pointer group flex-shrink-0">
-                    <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-xl shadow-sm border border-slate-100 group-hover:border-indigo-500 transition duration-200">
-                      {cat.icon}
+            {/* TAB CONTENT: EXPLORE */}
+            {userTab === 'explore' && (
+              <div className="flex-1 flex flex-col overflow-hidden">
+                {/* Level Progress Bar */}
+                <div className="px-5 pt-4 shrink-0">
+                  <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white p-4 rounded-3xl shadow-md relative overflow-hidden">
+                    <div className="absolute right-2 bottom-2 text-5xl opacity-10">🏆</div>
+                    <div className="flex justify-between items-center text-[10px] font-extrabold tracking-wider text-indigo-200">
+                      <span>EXP KULINER</span>
+                      <span>{Math.min(orders.filter(o => o.userName === currentUser?.name).length * 25, 100)}% menuju Dewa Kenyang</span>
                     </div>
-                    <span className="text-[9px] font-bold text-slate-500">{cat.name}</span>
+                    <div className="w-full bg-indigo-900/50 h-3 rounded-full mt-2 overflow-hidden p-0.5 border border-indigo-500/20">
+                      <div className="bg-gradient-to-r from-amber-400 to-amber-300 h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(orders.filter(o => o.userName === currentUser?.name).length * 25, 100)}%` }}></div>
+                    </div>
+                    <p className="text-[9px] text-amber-300 font-medium mt-2">🔥 Info: Setiap pesanan meningkatkan EXP & peringkat Sultan-mu!</p>
                   </div>
-                ))}
-              </div>
-            </div>
+                </div>
 
-            {/* Restoran Terbuka (Menggunakan Opsi Petualangan dari Gambar 2) */}
-            <div className="flex-1 px-5 pt-4 overflow-y-auto pb-24 space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Misi Makan Siang Aktif</h3>
-                <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full flex items-center gap-1">
-                  <Clock size={10} /> Sisa {session.endTime}
-                </span>
-              </div>
+                {/* Kategori Makanan */}
+                <div className="px-5 pt-5 shrink-0">
+                  <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-3">Kategori Kuliner</h3>
+                  <div className="flex gap-4 overflow-x-auto scrollbar-none pb-2">
+                    {[
+                      { icon: '🍛', name: 'Nasi Rames' },
+                      { icon: '🍗', name: 'Ayam Geprek' },
+                      { icon: '🍜', name: 'Soto Hangat' },
+                      { icon: '🍹', name: 'Minuman' },
+                    ].map((cat, i) => (
+                      <div key={i} className="flex flex-col items-center gap-1.5 cursor-pointer group flex-shrink-0">
+                        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-xl shadow-sm border border-slate-100 group-hover:border-indigo-500 transition duration-200">
+                          {cat.icon}
+                        </div>
+                        <span className="text-[9px] font-bold text-slate-500">{cat.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
-              <div className="space-y-3">
-                {restaurants.map(resto => (
-                  <div key={resto.id} className="bg-white rounded-[24px] overflow-hidden border border-slate-150 shadow-sm hover:shadow-md transition duration-200">
-                    <div className="relative h-28">
-                      <img src={resto.image} alt={resto.name} className="w-full h-full object-cover brightness-90" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent p-4 flex flex-col justify-between">
-                        <span className="self-end bg-amber-500 text-slate-950 font-black text-[8px] py-1 px-2.5 rounded-full uppercase tracking-wider">
-                          {resto.tag}
-                        </span>
-                        <div>
-                          <span className="text-[8px] font-bold text-amber-400 uppercase tracking-wider">REKOMENDASI OB</span>
-                          <h4 className="text-sm font-black text-white">{resto.name}</h4>
+                {/* List Restoran */}
+                <div className="flex-1 px-5 pt-4 overflow-y-auto pb-24 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Misi Makan Siang Aktif</h3>
+                    <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full flex items-center gap-1">
+                      <Clock size={10} /> Sisa s/d {session.endTime}
+                    </span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {restaurants.map(resto => (
+                      <div key={resto.id} className="bg-white rounded-[24px] overflow-hidden border border-slate-150 shadow-sm hover:shadow-md transition duration-200">
+                        <div className="relative h-28">
+                          <img src={resto.image} alt={resto.name} className="w-full h-full object-cover brightness-90" />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent p-4 flex flex-col justify-between">
+                            <span className="self-end bg-amber-500 text-slate-950 font-black text-[8px] py-1 px-2.5 rounded-full uppercase tracking-wider">
+                              {resto.tag}
+                            </span>
+                            <div>
+                              <span className="text-[8px] font-bold text-amber-400 uppercase tracking-wider">REKOMENDASI OB</span>
+                              <h4 className="text-sm font-black text-white">{resto.name}</h4>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="p-4 flex justify-between items-center text-xs">
+                          <div className="space-y-1">
+                            <p className="text-[10px] text-slate-400 flex items-center gap-1"><MapPin size={10} /> {resto.distance}</p>
+                            <p className="text-[10px] text-slate-400 flex items-center gap-1"><Clock size={10} /> Est. Pengiriman: {resto.time}</p>
+                          </div>
+                          <button 
+                            onClick={() => viewRestoDetail(resto)}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2 px-4 rounded-xl shadow-md text-[10px] flex items-center gap-1 transition"
+                          >
+                            Pilih Menu <ChevronRight size={10} />
+                          </button>
                         </div>
                       </div>
-                    </div>
-                    {/* Detail Informasi Tiket Perjalanan (Gambar 2 Vibe) */}
-                    <div className="p-4 flex justify-between items-center text-xs">
-                      <div className="space-y-1">
-                        <p className="text-[10px] text-slate-400 flex items-center gap-1"><MapPin size={10} /> {resto.distance}</p>
-                        <p className="text-[10px] text-slate-400 flex items-center gap-1"><Clock size={10} /> Est. Pengiriman: {resto.time}</p>
-                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB CONTENT: PESANAN SAYA */}
+            {userTab === 'my_orders' && (
+              <div className="flex-1 overflow-y-auto px-5 pt-4 pb-24 space-y-6">
+                <div>
+                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider mb-3">Pesanan Aktif Hari Ini</h3>
+                  
+                  {orders.filter(o => o.userName === currentUser?.name && o.date === 'Hari Ini').length === 0 ? (
+                    <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-slate-200">
+                      <span className="text-4xl block mb-2">🍽️</span>
+                      <p className="text-xs font-bold text-slate-700">Belum ada pesanan aktif hari ini.</p>
                       <button 
-                        onClick={() => viewRestoDetail(resto)}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-2 px-4 rounded-xl shadow-md text-[10px] flex items-center gap-1 transition"
+                        onClick={() => setUserTab('explore')}
+                        className="mt-3 text-[10px] font-bold bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-xl border border-indigo-200 hover:bg-indigo-100 transition"
                       >
-                        Pilih Menu <ChevronRight size={10} />
+                        Pesan Sekarang
                       </button>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+                  ) : (
+                    orders.filter(o => o.userName === currentUser?.name && o.date === 'Hari Ini').map(order => (
+                      <div key={order.id} className="bg-white text-slate-800 rounded-[28px] overflow-hidden shadow-md border border-slate-150">
+                        <div className="bg-indigo-600 text-white p-4 flex justify-between items-center relative">
+                          <div className="absolute -bottom-2 -left-2 w-4 h-4 bg-[#F7F8FC] rounded-full"></div>
+                          <div className="absolute -bottom-2 -right-2 w-4 h-4 bg-[#F7F8FC] rounded-full"></div>
+                          <div>
+                            <span className="text-[8px] font-bold text-indigo-200 uppercase tracking-wider">KARYAWAN</span>
+                            <h4 className="font-black text-xs">{order.userName}</h4>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[8px] font-bold text-indigo-200 uppercase tracking-wider">STATUS ORDER</span>
+                            <span className="bg-amber-400 text-slate-950 text-[8px] font-black px-2 py-0.5 rounded-full block mt-0.5">{order.status}</span>
+                          </div>
+                        </div>
 
-            {/* Floating Navigasi Bawah (Persis Gambar 1) */}
-            <div className="absolute bottom-4 left-4 right-4 bg-slate-950/90 backdrop-blur-md rounded-[24px] p-2.5 flex justify-around items-center text-slate-400 z-30 shadow-lg">
-              <button className="flex flex-col items-center gap-0.5 text-amber-400">
+                        <div className="p-4 space-y-2 border-b border-dashed border-slate-200">
+                          {order.items.map((item, i) => (
+                            <div key={i} className="flex justify-between text-xs font-semibold">
+                              <span className="text-slate-600">{item.qty}x {item.name}</span>
+                              <span className="text-slate-800 font-bold">{formatRp(item.price * item.qty)}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="p-4 bg-slate-50 space-y-2.5">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[9px] text-slate-400 font-bold uppercase">TOTAL TAGIHAN</span>
+                            <span className="text-sm font-black text-indigo-600">{formatRp(order.total)}</span>
+                          </div>
+                          
+                          <div className="bg-white p-2.5 rounded-xl border border-slate-200">
+                            <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mb-1">Transfer ke Rekening OB</p>
+                            <div className="flex justify-between items-center">
+                              <span className="font-mono text-[10px] font-bold text-indigo-700">{session.bankAccount}</span>
+                              <button 
+                                onClick={() => navigator.clipboard.writeText(session.bankAccount)}
+                                className="p-1 hover:bg-slate-100 rounded text-slate-500"
+                              >
+                                <Copy size={12} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* History Section */}
+                <div>
+                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider mb-3 flex items-center gap-1.5"><History size={16}/> Riwayat Pesanan 30 Hari Terakhir</h3>
+                  <div className="space-y-3">
+                    {orders.filter(o => o.userName === currentUser?.name && o.date !== 'Hari Ini').length === 0 ? (
+                      <p className="text-xs text-slate-400 italic text-center py-4">Belum ada riwayat pesanan.</p>
+                    ) : (
+                      orders.filter(o => o.userName === currentUser?.name && o.date !== 'Hari Ini').map(hist => (
+                        <div key={hist.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                              <span className="font-bold text-xs text-slate-800">{hist.items[0]?.name || "Menu Gabungan"}</span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 font-medium">Tanggal Transaksi: {hist.date}</p>
+                          </div>
+                          <div className="text-right">
+                            <span className="font-black text-xs text-slate-800 block">{formatRp(hist.total)}</span>
+                            <span className="text-[8px] bg-emerald-50 text-emerald-600 font-bold px-1.5 py-0.5 rounded">Selesai</span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB CONTENT: GAMIFIED LEADERBOARD */}
+            {userTab === 'leaderboard' && (
+              <div className="flex-1 flex flex-col overflow-hidden">
+                {/* Header Banner */}
+                <div className="px-5 pt-4 shrink-0">
+                  <div className="bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 p-4 rounded-3xl shadow-md text-center relative overflow-hidden">
+                    <div className="absolute left-3 top-3 text-4xl opacity-10">👑</div>
+                    <Trophy size={32} className="mx-auto mb-1 text-slate-900 drop-shadow-md animate-bounce" />
+                    <h3 className="font-black text-sm uppercase tracking-tight">Klan Sultan Makan Kantor</h3>
+                    <p className="text-[9px] font-bold text-slate-900/80">Kasta makan teraktif & gelar terhormat di kantor!</p>
+                  </div>
+                </div>
+
+                {/* Sub Tab: Leaderboard vs Gelar */}
+                <div className="px-5 pt-4 shrink-0 flex gap-2">
+                  <button 
+                    onClick={() => setLeaderboardSubTab('rank')}
+                    className={`flex-1 py-2 text-xs font-bold rounded-xl border transition ${leaderboardSubTab === 'rank' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200'}`}
+                  >
+                    🏆 Peringkat Sultan
+                  </button>
+                  <button 
+                    onClick={() => setLeaderboardSubTab('badges')}
+                    className={`flex-1 py-2 text-xs font-bold rounded-xl border transition ${leaderboardSubTab === 'badges' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200'}`}
+                  >
+                    🏅 Gelar & Pencapaian
+                  </button>
+                </div>
+
+                {/* SUB TAB: RANKING LIST */}
+                {leaderboardSubTab === 'rank' && (
+                  <div className="flex-1 overflow-y-auto px-5 pt-4 pb-24 space-y-2.5">
+                    {(() => {
+                      const userTotals = {};
+                      orders.forEach(o => {
+                        userTotals[o.userName] = (userTotals[o.userName] || 0) + o.total;
+                      });
+
+                      const sortedSultans = Object.keys(userTotals).map(name => ({
+                        name,
+                        totalSpend: userTotals[name]
+                      })).sort((a, b) => b.totalSpend - a.totalSpend);
+
+                      return sortedSultans.map((sultan, index) => {
+                        const isCurrentUser = sultan.name === currentUser?.name;
+                        let rankBadge = `${index + 1}`;
+                        let rankStyle = "bg-slate-100 text-slate-700";
+                        let borderStyle = "border-slate-150";
+                        let titleBadge = "Petualangan Rasa";
+                        let titleStyle = "bg-slate-100 text-slate-600";
+
+                        if (index === 0) {
+                          rankBadge = "👑 1";
+                          rankStyle = "bg-amber-100 text-amber-700 border-amber-300 font-black";
+                          borderStyle = "border-amber-300 bg-amber-500/5";
+                          titleBadge = "Raja Sultan Makan 👑";
+                          titleStyle = "bg-amber-500 text-slate-950 font-black";
+                        } else if (index === 1) {
+                          rankBadge = "🥈 2";
+                          rankStyle = "bg-indigo-100 text-indigo-700 font-bold";
+                          titleBadge = "Menteri Kuliner";
+                          titleStyle = "bg-indigo-500 text-white font-bold";
+                        } else if (index === 2) {
+                          rankBadge = "🥉 3";
+                          rankStyle = "bg-orange-100 text-orange-700 font-bold";
+                          titleBadge = "Wakil Menteri Kuliner";
+                          titleStyle = "bg-orange-400 text-white font-bold";
+                        }
+
+                        return (
+                          <div 
+                            key={index} 
+                            className={`bg-white p-4 rounded-2xl border flex justify-between items-center transition-all ${borderStyle} ${isCurrentUser ? 'ring-2 ring-indigo-500 shadow-md' : 'shadow-sm'}`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-[10px] font-black border ${rankStyle}`}>
+                                {rankBadge}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-extrabold text-xs text-slate-800">{sultan.name}</span>
+                                  {isCurrentUser && <span className="text-[8px] bg-indigo-600 text-white px-1.5 rounded-md font-bold">Kamu</span>}
+                                </div>
+                                <span className={`text-[8px] px-2 py-0.5 rounded-full inline-block mt-1.5 font-extrabold ${titleStyle}`}>{titleBadge}</span>
+                              </div>
+                            </div>
+
+                            <div className="text-right">
+                              <span className="text-[9px] text-slate-400 block uppercase font-bold">TOTAL BELANJA</span>
+                              <span className="font-black text-xs text-slate-800">{formatRp(sultan.totalSpend)}</span>
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                )}
+
+                {/* SUB TAB: GELAR & ACHIEVEMENTS (DENGAN DEKLARASI DARI USER) */}
+                {leaderboardSubTab === 'badges' && (
+                  <div className="flex-1 overflow-y-auto px-5 pt-4 pb-24 space-y-3">
+                    {[
+                      {
+                        title: "The Mukbang Master 👑",
+                        desc: "Pernah memesan lebih dari 3 porsi piring makanan dalam satu order sekaligus.",
+                        winner: dynamicBadges.mukbangMaster.name,
+                        metric: dynamicBadges.mukbangMaster.score ? `${dynamicBadges.mukbangMaster.score} Porsi Sekaligus` : '-',
+                        bgColor: "bg-gradient-to-r from-red-500/10 to-orange-500/10 border-red-200 text-red-700",
+                        badgeIcon: "🔥"
+                      },
+                      {
+                        title: "Selera Elit 🌾",
+                        desc: "Gaya sultan sejati, total pesanan termahal dalam kurun sebulan terakhir.",
+                        winner: dynamicBadges.seleraElit.name,
+                        metric: formatRp(dynamicBadges.seleraElit.score),
+                        bgColor: "bg-gradient-to-r from-amber-500/10 to-yellow-500/10 border-amber-200 text-amber-700",
+                        badgeIcon: "💎"
+                      },
+                      {
+                        title: "Black Hole Belly 🌌",
+                        desc: "Perut tanpa dasar, paling banyak memesan dari segi jumlah porsi total.",
+                        winner: dynamicBadges.blackHoleBelly.name,
+                        metric: `${dynamicBadges.blackHoleBelly.score} Porsi Terbabat`,
+                        bgColor: "bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border-indigo-200 text-indigo-700",
+                        badgeIcon: "🌀"
+                      },
+                      {
+                        title: "The Avengers Team 🛡️",
+                        desc: "Pesanan makan malam/siang jumbo sampai dikira mau kasih makan pahlawan super.",
+                        winner: dynamicBadges.avengersTeam.name,
+                        metric: dynamicBadges.avengersTeam.score ? `${dynamicBadges.avengersTeam.score} Porsi Pesta` : '-',
+                        bgColor: "bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border-blue-200 text-blue-700",
+                        badgeIcon: "🚀"
+                      },
+                      {
+                        title: "Investor Utama Resto 💼",
+                        desc: "Penyokong dana warung makan teraktif dengan total order mingguan tertinggi.",
+                        winner: dynamicBadges.investorUtama.name,
+                        metric: formatRp(dynamicBadges.investorUtama.score),
+                        bgColor: "bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border-emerald-200 text-emerald-700",
+                        badgeIcon: "📈"
+                      },
+                      {
+                        title: "CEO of Flexing Food 👑",
+                        desc: "Paling jor-joran dan megah, pemegang nilai order termahal khusus hari ini.",
+                        winner: dynamicBadges.ceoFlexing.name,
+                        metric: formatRp(dynamicBadges.ceoFlexing.score),
+                        bgColor: "bg-gradient-to-r from-pink-500/10 to-rose-500/10 border-pink-200 text-pink-700",
+                        badgeIcon: "✨"
+                      },
+                      {
+                        title: "The Last Survivor ⏱️",
+                        desc: "Ujung tanduk petualangan, pemesan paling mepet terakhir hari ini.",
+                        winner: dynamicBadges.lastSurvivor.name,
+                        metric: "Last Order Hari Ini",
+                        bgColor: "bg-gradient-to-r from-slate-500/10 to-gray-500/10 border-slate-200 text-slate-700",
+                        badgeIcon: "⛺"
+                      },
+                      {
+                        title: "Diet Mulai Besok 🏃",
+                        desc: "Selalu gerak cepat mengamankan antrean, pemesan paling awal dalam minggu ini.",
+                        winner: dynamicBadges.dietBesok.name,
+                        metric: "Order Pertama Hari Ini",
+                        bgColor: "bg-gradient-to-r from-teal-500/10 to-green-500/10 border-teal-200 text-teal-700",
+                        badgeIcon: "🥗"
+                      }
+                    ].map((badge, index) => (
+                      <div key={index} className={`p-4 rounded-2xl border flex items-start gap-3 bg-white shadow-sm`}>
+                        <div className="w-12 h-12 rounded-xl bg-slate-50 border flex items-center justify-center text-2xl shrink-0">
+                          {badge.badgeIcon}
+                        </div>
+                        <div className="flex-1 space-y-1">
+                          <h4 className="font-extrabold text-xs text-slate-800">{badge.title}</h4>
+                          <p className="text-[10px] text-slate-400 leading-normal">{badge.desc}</p>
+                          <div className="pt-2 flex justify-between items-center text-[10px]">
+                            <span className="text-slate-500">Penyandang: <strong className="text-slate-800">{badge.winner}</strong></span>
+                            <span className="font-black bg-slate-100 px-2 py-0.5 rounded text-slate-700">{badge.metric}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Floating Bottom Nav */}
+            <div className="absolute bottom-4 left-4 right-4 bg-slate-950/90 backdrop-blur-md rounded-[24px] p-2 flex justify-around items-center text-slate-400 z-30 shadow-lg">
+              <button 
+                onClick={() => setUserTab('explore')} 
+                className={`flex flex-col items-center gap-0.5 py-1 px-3.5 rounded-xl transition duration-150 ${userTab === 'explore' ? 'text-amber-400' : 'hover:text-white'}`}
+              >
                 <Compass size={18} />
                 <span className="text-[8px] font-bold uppercase">Explore</span>
               </button>
-              <button onClick={() => setCurrentScreen('admin_dashboard')} className="flex flex-col items-center gap-0.5 hover:text-white transition">
+              <button 
+                onClick={() => setUserTab('my_orders')} 
+                className={`flex flex-col items-center gap-0.5 py-1 px-3.5 rounded-xl transition duration-150 ${userTab === 'my_orders' ? 'text-amber-400' : 'hover:text-white'}`}
+              >
+                <Receipt size={18} />
+                <span className="text-[8px] font-bold uppercase">Pesanan Saya</span>
+              </button>
+              <button 
+                onClick={() => setUserTab('leaderboard')} 
+                className={`flex flex-col items-center gap-0.5 py-1 px-3.5 rounded-xl transition duration-150 ${userTab === 'leaderboard' ? 'text-amber-400' : 'hover:text-white'}`}
+              >
+                <Trophy size={18} />
+                <span className="text-[8px] font-bold uppercase">Sultan Board</span>
+              </button>
+              <button 
+                onClick={() => setCurrentScreen('admin_dashboard')} 
+                className="flex flex-col items-center gap-0.5 hover:text-white transition"
+              >
                 <Store size={18} />
                 <span className="text-[8px] font-bold uppercase">OB Panel</span>
               </button>
@@ -394,10 +845,9 @@ export default function App() {
           </div>
         )}
 
-        {/* SCREEN 4: RESTORAN DETAIL (Gaya Rencana Wisata Gambar 2) */}
+        {/* SCREEN 4: RESTORAN DETAIL */}
         {currentScreen === 'restaurant_detail' && (
           <div className="flex-1 flex flex-col bg-[#F7F8FC] pt-12">
-            {/* Header / Hero Cover (Gambar 2) */}
             <div className="relative h-44 shrink-0">
               <img src={selectedResto.image} alt={selectedResto.name} className="w-full h-full object-cover brightness-75" />
               <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/80 p-4 flex flex-col justify-between">
@@ -415,7 +865,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Menu List */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-24">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Pilih Perlengkapan Energi Makan Siang</p>
               {menus.filter(m => m.restaurant_id === selectedResto.id).map(menu => {
@@ -433,7 +882,6 @@ export default function App() {
                         <p className="text-xs font-black text-indigo-600 mt-2">{formatRp(menu.price)}</p>
                       </div>
 
-                      {/* Controls */}
                       {qty === 0 ? (
                         <button 
                           onClick={() => handleUpdateCart(menu, 1)}
@@ -466,7 +914,7 @@ export default function App() {
               })}
             </div>
 
-            {/* Bottom Action Sheet (Vibe Rencana Wisata Gambar 2) */}
+            {/* Bottom Action Sheet */}
             {cartItemsCount > 0 && (
               <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-slate-150 p-4 rounded-t-[32px] shadow-2xl z-40">
                 <div className="flex justify-between items-center mb-4">
@@ -487,109 +935,23 @@ export default function App() {
           </div>
         )}
 
-        {/* SCREEN 5: RECEIPT TICKET (Gaya Boarding Pass Gambar 2) */}
-        {currentScreen === 'ticket_view' && (
-          <div className="flex-1 flex flex-col bg-slate-900 justify-between p-6 pt-16 text-white">
-            <div className="text-center space-y-1">
-              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Misi Makan Siang Sukses!</span>
-              <h3 className="text-xl font-black">Karcis Pembayaran</h3>
-            </div>
-
-            {/* Tiket Boarding Pass Premium (Gambar 2 Vibe) */}
-            <div className="bg-white text-slate-800 rounded-[32px] overflow-hidden shadow-2xl my-auto">
-              {/* Header Tiket */}
-              <div className="bg-indigo-600 text-white p-5 flex justify-between items-center relative">
-                <div className="absolute -bottom-3 -left-3 w-6 h-6 bg-slate-900 rounded-full"></div>
-                <div className="absolute -bottom-3 -right-3 w-6 h-6 bg-slate-900 rounded-full"></div>
-                
-                <div>
-                  <span className="text-[8px] font-bold text-indigo-200 uppercase tracking-wider">KARYAWAN</span>
-                  <h4 className="font-black text-sm">{currentUser?.name}</h4>
-                </div>
-                <div className="text-right">
-                  <span className="text-[8px] font-bold text-indigo-200 uppercase tracking-wider">OB PENANGGUNG JAWAB</span>
-                  <h4 className="font-black text-sm">Pak Joko</h4>
-                </div>
-              </div>
-
-              {/* Rincian Rute Pengantaran Simbolik */}
-              <div className="p-5 border-b border-dashed border-slate-200 relative">
-                <div className="flex justify-between items-center text-xs">
-                  <div>
-                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">DARI</span>
-                    <span className="font-black text-slate-800">{selectedResto.name}</span>
-                  </div>
-                  <div className="flex-1 px-4 flex flex-col items-center">
-                    <Navigation size={14} className="text-indigo-600 rotate-90 animate-pulse" />
-                    <div className="w-full border-t border-slate-300 border-dashed my-1"></div>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">KE</span>
-                    <span className="font-black text-slate-800">Meja Kerja Anda</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Rincian Item */}
-              <div className="p-5 space-y-3">
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">MENU YANG DIPESAN</p>
-                <div className="space-y-2 max-h-24 overflow-y-auto">
-                  {cart.map((item, i) => (
-                    <div key={i} className="flex justify-between text-xs font-semibold">
-                      <span className="text-slate-600">{item.qty}x {item.name}</span>
-                      <span className="text-slate-800 font-bold">{formatRp(item.price * item.qty)}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Harga Akhir */}
-                <div className="pt-3 border-t border-slate-100 flex justify-between items-center">
-                  <span className="text-[10px] text-slate-400 font-bold uppercase">TOTAL TAGIHAN</span>
-                  <span className="text-base font-black text-indigo-600">{formatRp(cartTotal)}</span>
-                </div>
-
-                {/* Informasi Copy Rekening */}
-                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-left mt-2">
-                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mb-1">Transfer ke Rekening OB</p>
-                  <div className="flex justify-between items-center">
-                    <span className="font-mono text-xs font-bold text-indigo-700">{session.bankAccount}</span>
-                    <button 
-                      onClick={() => navigator.clipboard.writeText(session.bankAccount)}
-                      className="p-1 hover:bg-slate-200 rounded text-slate-500"
-                    >
-                      <Copy size={12} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <button 
-              onClick={() => {
-                setCart([]);
-                setCurrentScreen('user_dashboard');
-              }}
-              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-4 rounded-2xl text-xs shadow-lg transition"
-            >
-              Kembali ke Beranda Petualangan
-            </button>
-          </div>
-        )}
-
-        {/* SCREEN 6: ADMIN DASHBOARD */}
+        {/* SCREEN 5: ADMIN DASHBOARD */}
         {currentScreen === 'admin_dashboard' && (
           <div className="flex-1 flex flex-col bg-[#F7F8FC] pt-12">
             <div className="bg-slate-900 text-white p-4 flex justify-between items-center shrink-0">
               <h1 className="font-black text-sm tracking-tight flex items-center gap-1"><Store size={16}/> OB Panel Kontrol</h1>
-              <button onClick={() => setCurrentScreen('user_dashboard')} className="text-xs bg-slate-800 px-3 py-1.5 rounded-lg text-slate-300 hover:text-white">User Mode</button>
+              <button onClick={() => {
+                setCurrentScreen('user_dashboard');
+                setUserTab('explore');
+              }} className="text-xs bg-slate-800 px-3 py-1.5 rounded-lg text-slate-300 hover:text-white">User Mode</button>
             </div>
 
             <div className="p-5 flex-1 overflow-y-auto space-y-4">
               <div className="bg-gradient-to-br from-indigo-900 to-indigo-800 text-white p-5 rounded-3xl shadow-lg flex justify-between items-center relative overflow-hidden">
                 <div>
                   <p className="text-slate-300 text-[9px] font-bold uppercase tracking-wider mb-1">Total Pemasukan Misi Makan</p>
-                  <h2 className="text-2xl font-black text-amber-400">Rp 44.000</h2>
-                  <p className="text-[9px] text-slate-300 mt-1">Total Pesanan Terdaftar: <span className="font-bold text-white">2 Karyawan</span></p>
+                  <h2 className="text-2xl font-black text-amber-400">Rp 1.054.000</h2>
+                  <p className="text-[9px] text-slate-300 mt-1">Total Pesanan Terdaftar: <span className="font-bold text-white">{orders.length} Transaksi</span></p>
                 </div>
                 <div className="w-12 h-12 bg-indigo-500/10 text-indigo-400 rounded-2xl flex items-center justify-center border border-indigo-500/20 z-10 shadow-inner">
                   <Wallet size={24} />
@@ -611,22 +973,12 @@ export default function App() {
                     {session.isOpen ? 'Terbuka' : 'Tertutup'}
                   </button>
                 </div>
-
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Batas Waktu Order</label>
-                  <input 
-                    type="time" 
-                    value={session.endTime} 
-                    onChange={e => setSession({...session, endTime: e.target.value})}
-                    className="w-full bg-slate-50 border p-3 rounded-2xl text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
               </div>
 
               {/* Rekap Order Masuk */}
               <div className="space-y-2">
-                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Daftar Order Aktif</h3>
-                {orders.map(order => (
+                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Daftar Order Aktif Hari Ini</h3>
+                {orders.filter(o => o.date === 'Hari Ini').map(order => (
                   <div key={order.id} className="bg-white p-4 rounded-2xl border border-slate-150 shadow-sm text-xs">
                     <div className="flex justify-between items-center border-b pb-2 mb-2">
                       <span className="font-bold text-slate-800">{order.userName}</span>
@@ -637,12 +989,32 @@ export default function App() {
                         <li key={i}>{item.qty}x {item.name} {item.notes && <span className="text-amber-600 italic">("{item.notes}")</span>}</li>
                       ))}
                     </ul>
+                    <div className="mt-3 pt-2.5 border-t flex justify-between items-center">
+                      <span className="text-[9px] text-slate-400 uppercase font-bold">Ubah Status</span>
+                      <div className="flex gap-1">
+                        <button 
+                          onClick={() => {
+                            setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'Diproses OB' } : o));
+                          }}
+                          className="bg-indigo-50 text-indigo-700 text-[8px] font-bold px-2 py-1 rounded hover:bg-indigo-100"
+                        >
+                          Proses
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'Selesai' } : o));
+                          }}
+                          className="bg-emerald-50 text-emerald-700 text-[8px] font-bold px-2 py-1 rounded hover:bg-emerald-100"
+                        >
+                          Selesai
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Bottom Nav Admin */}
             <button 
               onClick={handleLogout} 
               className="m-5 mt-auto bg-slate-900 text-white font-bold py-3.5 rounded-2xl text-xs flex items-center justify-center gap-1.5 hover:bg-slate-800 transition"
