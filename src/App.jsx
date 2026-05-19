@@ -10,11 +10,11 @@ import {
 
 // --- INTEGRASI CORE CLOUD DATABASE ---
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, collection, onSnapshot, addDoc, updateDoc } from 'firebase/firestore';
 
 // ============================================================================
-// ⚙️ FIREBASE CONFIGURATION (KREDENSIAL ASLI DARI PROYEK NIMAK ANDA)
+// ⚙️ FIREBASE CONFIGURATION (KREDENSIAL ASLI NIMAK)
 // ============================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyA4WWxScF_k7CeXYJWXPBQCU_z4E50oCA4",
@@ -25,48 +25,16 @@ const firebaseConfig = {
   appId: "1:958561448423:web:afae6cb869ba9d2d408d42"
 };
 
-const isFirebaseReady = true; 
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'nimak-bfe56-app';
-
+// Inisialisasi Firebase Murni
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// --- SEED DATA CADANGAN (OTOMATIS DIGUNAKAN JIKA DATABASE KOSONG) ---
+// --- SEED DATA CADANGAN ---
 const initialRestaurants = [
-  { 
-    id: 1, 
-    name: 'Warteg Bahari Kingdom', 
-    rating: 4.9, 
-    reviews: 320, 
-    category: 'Local Culinary • Cozy', 
-    image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80',
-    tag: 'Terpopuler 🔥',
-    distance: '200m dari Kantor',
-    time: '15-20 mnt'
-  },
-  { 
-    id: 2, 
-    name: 'Geprek Bensu Volcano', 
-    rating: 4.8, 
-    reviews: 154, 
-    category: 'Spicy Grill • Fast Food', 
-    image: 'https://images.unsplash.com/photo-1562967914-608f82629710?auto=format&fit=crop&w=600&q=80',
-    tag: 'Promo Juara 🏷️',
-    distance: '800m dari Kantor',
-    time: '20-25 mnt'
-  },
-  { 
-    id: 3, 
-    name: 'Soto Lamongan Cak Legendaris', 
-    rating: 4.9, 
-    reviews: 412, 
-    category: 'Warm Soup • Authentic', 
-    image: 'https://images.unsplash.com/photo-1596797038530-2c107229654b?auto=format&fit=crop&w=600&q=80',
-    tag: 'Pilihan CFO ⭐',
-    distance: '1.2km dari Kantor',
-    time: '25-30 mnt'
-  }
+  { id: 1, name: 'Warteg Bahari Kingdom', rating: 4.9, reviews: 320, category: 'Local Culinary • Cozy', image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80', tag: 'Terpopuler 🔥', distance: '200m dari Kantor', time: '15-20 mnt' },
+  { id: 2, name: 'Geprek Bensu Volcano', rating: 4.8, reviews: 154, category: 'Spicy Grill • Fast Food', image: 'https://images.unsplash.com/photo-1562967914-608f82629710?auto=format&fit=crop&w=600&q=80', tag: 'Promo Juara 🏷️', distance: '800m dari Kantor', time: '20-25 mnt' },
+  { id: 3, name: 'Soto Lamongan Cak Legendaris', rating: 4.9, reviews: 412, category: 'Warm Soup • Authentic', image: 'https://images.unsplash.com/photo-1596797038530-2c107229654b?auto=format&fit=crop&w=600&q=80', tag: 'Pilihan CFO ⭐', distance: '1.2km dari Kantor', time: '25-30 mnt' }
 ];
 
 const initialMenus = [
@@ -80,13 +48,10 @@ const initialMenus = [
 ];
 
 const initialOrders = [
-  { id: 101, userName: "Mbak Sarah (Finance)", total: 39000, date: 'Hari Ini', items: [{ menuId: 1, name: 'Nasi Telur Dadar + Orek Tempe', price: 15000, qty: 1, notes: "" }, { menuId: 4, name: 'Paket Geprek Lava Mozzarella', price: 25000, qty: 1, notes: "" }], status: 'Selesai' },
-  { id: 102, userName: "Mbak Rini (HRD)", total: 19000, date: 'Hari Ini', items: [{ menuId: 1, name: 'Nasi Telur Dadar + Orek Tempe', price: 15000, qty: 1, notes: "Oreknya basah" }, { menuId: 3, name: 'Es Teh Manis Jumbo Booster', price: 4000, qty: 1, notes: "" }], status: 'Diproses CFO' },
-  { id: 103, userName: "Mas Bimo (IT Support)", total: 89000, date: 'Hari Ini', items: [{ menuId: 4, name: 'Paket Geprek Lava Mozzarella', price: 25000, qty: 3, notes: "Sambal level 5!" }, { menuId: 5, name: 'Jamur Crispy Kriuk Nagih', price: 10000, qty: 1, notes: "" }, { menuId: 3, name: 'Es Teh Manis Jumbo Booster', price: 4000, qty: 1, notes: "" }], status: 'Menunggu Pembayaran' },
-  { id: 1, userName: "Mas Wahyu (Desainer)", total: 450000, date: '10 Mei 2026', items: [{ menuId: 7, name: 'Soto Sapi Premium Party Box', price: 22000, qty: 20, notes: "" }], status: 'Selesai' }
+  { id: "mock1", userName: "Mbak Sarah (Finance)", total: 39000, date: 'Hari Ini', items: [{ menuId: 1, name: 'Nasi Telur Dadar + Orek Tempe', price: 15000, qty: 1, notes: "" }, { menuId: 4, name: 'Paket Geprek Lava Mozzarella', price: 25000, qty: 1, notes: "" }], status: 'Selesai' }
 ];
 
-// Pengaman format mata uang dari error crash undefined/NaN
+// Pengaman format mata uang dari error crash
 const formatRp = (num) => {
   if (num === null || num === undefined || isNaN(num)) return 'Rp 0';
   return 'Rp ' + num.toLocaleString('id-ID');
@@ -99,9 +64,9 @@ export default function App() {
   const [adminViewTab, setAdminViewTab] = useState('orang');
   
   const [currentUser, setCurrentUser] = useState(null);
-  const [user, setUser] = useState(null); 
-  const [restaurants, setRestaurants] = useState(initialRestaurants);
-  const [menus, setMenus] = useState(initialMenus);
+  const [userAuth, setUserAuth] = useState(null); 
+  const [restaurants] = useState(initialRestaurants);
+  const [menus] = useState(initialMenus);
   const [orders, setOrders] = useState(initialOrders);
   const [selectedResto, setSelectedResto] = useState(initialRestaurants[0]);
   const [cart, setCart] = useState([]);
@@ -114,55 +79,53 @@ export default function App() {
     rejectMessage: 'Waduh petualangan kuliner hari ini sudah ditutup! 😭 Hubungi CFO jika darurat!'
   });
 
-  // --- 🔐 TAHAP 1: MASUK TANPA IDENTITAS (RULE 3) ---
+  // --- LOGIN OTOMATIS FIREBASE ---
   useEffect(() => {
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (err) {
-        console.warn("Auth Firebase gagal, beralih ke Mode Offline:", err);
+    signInAnonymously(auth).catch((error) => {
+      console.error("Gagal login anonim ke Firebase:", error);
+    });
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setUserAuth(user);
       }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
+    });
     return () => unsubscribe();
   }, []);
 
-  // --- 📡 TAHAP 2: REALTIME DATABASE SYNC (RULE 1 & 2 & 3) ---
+  // --- AMBIL DATA DARI DATABASE ---
   useEffect(() => {
-    if (!user) return; 
+    if (!userAuth) return; 
 
-    // Strict Path sesuai RULE 1 untuk menghindari permission error
-    const sessionDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current');
-    const ordersColRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
+    // Referensi Database Bersih & Sederhana
+    const sessionRef = doc(db, 'session', 'current');
+    const ordersRef = collection(db, 'orders');
 
-    const unsubSession = onSnapshot(sessionDocRef, (snap) => {
+    // Dengerin perubahan Sesi (Buka/Tutup Lapak)
+    const unsubSession = onSnapshot(sessionRef, (snap) => {
       if (snap.exists()) {
         setSession(snap.data());
       } else {
-        // Tulis sesi bawaan jika dokumen di Firestore belum terbentuk
-        setDoc(sessionDocRef, session).catch(e => console.warn("Simpan sesi awal tertunda:", e.message));
+        setDoc(sessionRef, session).catch(e => console.log(e));
       }
-    }, (err) => console.error("Session Sync Error:", err));
+    }, (error) => console.error("Error ambil sesi:", error));
 
-    const unsubOrders = onSnapshot(ordersColRef, (snap) => {
+    // Dengerin perubahan Order
+    const unsubOrders = onSnapshot(ordersRef, (snap) => {
       const list = []; 
       snap.forEach(d => {
-        const data = d.data();
-        if (data) list.push({ id: d.id, ...data });
+        list.push({ id: d.id, ...d.data() });
       });
-      if (list.length > 0) setOrders(list);
-    }, (err) => console.error("Orders Sync Error:", err));
+      if (list.length > 0) {
+        setOrders(list);
+      }
+    }, (error) => console.error("Error ambil order:", error));
 
     return () => { 
       unsubSession(); 
       unsubOrders(); 
     };
-  }, [user]);
+  }, [userAuth]);
 
   const handleLogin = (name, phone) => {
     const role = phone === '0000' ? 'admin' : 'user';
@@ -204,35 +167,43 @@ export default function App() {
       items: cart,
       total: cartTotal,
       date: 'Hari Ini',
-      status: 'Menunggu Pembayaran'
+      status: 'Menunggu Pembayaran',
+      timestamp: Date.now() // Tambahan agar bisa diurutkan
     };
 
-    if (user) {
-      const ordersColRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
-      await addDoc(ordersColRef, newOrder);
-    } else {
-      setOrders([...orders, { id: Date.now(), ...newOrder }]);
+    if (userAuth) {
+      try {
+        await addDoc(collection(db, 'orders'), newOrder);
+      } catch (error) {
+        console.error("Gagal mengirim pesanan:", error);
+        alert("Gagal terhubung ke database. Pastikan Rules Firebase sudah diubah menjadi 'true'.");
+      }
     }
+    
     setCart([]);
     setCurrentScreen('user_dashboard');
     setUserTab('my_orders');
   };
 
   const handleUpdateOrderStatus = async (orderId, newStatus) => {
-    if (user) {
-      const orderDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
-      await updateDoc(orderDocRef, { status: newStatus });
-    } else {
-      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+    if (userAuth) {
+      try {
+        await updateDoc(doc(db, 'orders', orderId), { status: newStatus });
+      } catch (error) {
+        console.error("Gagal update status:", error);
+      }
     }
   };
 
   const handleToggleLapak = async () => {
     const updated = { ...session, isOpen: !session.isOpen };
     setSession(updated);
-    if (user) {
-      const sessionDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current');
-      await setDoc(sessionDocRef, updated);
+    if (userAuth) {
+      try {
+        await setDoc(doc(db, 'session', 'current'), updated);
+      } catch(error) {
+        console.error("Gagal update lapak:", error);
+      }
     }
   };
 
@@ -241,7 +212,7 @@ export default function App() {
   const openRestaurants = restaurants.filter(r => (session?.openRestoIds || [1, 2, 3]).includes(r.id));
   const filteredMenus = menus.filter(m => m.restaurant_id === selectedResto?.id);
 
-  // Sultan System Engine dengan Pengaman Objek Kosong (Crash-Safe)
+  // Sultan System Engine dengan Pengaman Objek Kosong
   const dynamicBadges = useMemo(() => {
     const userStats = {};
     const todayOrders = orders.filter(o => o && o.date === 'Hari Ini');
@@ -270,8 +241,8 @@ export default function App() {
       avengersTeam: getTop(uList.filter(u => u.maxSingleQty > 5), u => u.maxSingleQty),
       investorUtama: getTop(uList, u => u.totalSpend),
       ceoFlexing: todayOrders.length ? todayOrders.reduce((a, b) => (Number(a.total) || 0) > (Number(b.total) || 0) ? a : b) : { userName: '-' },
-      lastSurvivor: todayOrders.length ? todayOrders[todayOrders.length - 1] : { userName: '-' },
-      dietBesok: todayOrders.length ? todayOrders[0] : { userName: '-' }
+      lastSurvivor: todayOrders.length ? [...todayOrders].sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0))[0] : { userName: '-' },
+      dietBesok: todayOrders.length ? [...todayOrders].sort((a,b) => (a.timestamp || 0) - (b.timestamp || 0))[0] : { userName: '-' }
     };
   }, [orders]);
 
@@ -325,6 +296,11 @@ export default function App() {
     <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-4">
       <div className="w-full max-w-[410px] bg-[#F7F8FC] h-[820px] flex flex-col relative shadow-2xl rounded-[48px] border-[10px] border-slate-950 overflow-hidden">
         
+        {/* Notch */}
+        <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-6 bg-slate-950 rounded-b-2xl z-50 flex items-center justify-center">
+          <div className="w-12 h-1.5 bg-slate-800 rounded-full"></div>
+        </div>
+
         {/* SCREEN 1: ONBOARDING */}
         {currentScreen === 'onboarding' && (
           <div className="flex-1 flex flex-col justify-between p-8 pt-16 bg-gradient-to-b from-[#E2E6FF] via-[#EAEFFF] to-[#F5F8FF]">
@@ -389,6 +365,9 @@ export default function App() {
             {userTab === 'my_orders' && (
               <div className="flex-1 overflow-y-auto p-5 space-y-4 pb-24">
                 <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Karcis Pesanan Aktif</h3>
+                {orders.filter(o => o && o.userName === currentUser?.name && o.date === 'Hari Ini').length === 0 && (
+                   <p className="text-xs text-slate-500 italic text-center mt-10">Belum ada pesanan.</p>
+                )}
                 {orders.filter(o => o && o.userName === currentUser?.name && o.date === 'Hari Ini').map(order => (
                   <div key={order.id} className="bg-white rounded-3xl p-4 border border-slate-200 shadow-sm space-y-3">
                     <div className="flex justify-between border-b pb-2"><span className="font-black text-xs">{order.userName}</span><span className="bg-amber-400 text-[8px] font-black px-2 py-0.5 rounded-full">{order.status}</span></div>
@@ -478,7 +457,7 @@ export default function App() {
             {cartItemsCount > 0 && (
               <div className="absolute bottom-0 left-0 right-0 bg-white border-t p-4 rounded-t-[32px] shadow-2xl flex justify-between items-center z-40">
                 <div><span className="text-[9px] text-slate-400 block font-bold">TOTAL</span><span className="text-sm font-black text-indigo-600">{formatRp(cartTotal)}</span></div>
-                <button onClick={handleCheckout} className="bg-indigo-600 text-white font-extrabold py-3 px-6 rounded-2xl text-xs">Konfirmasi Rencana Makan 🚀</button>
+                <button onClick={handleCheckout} className="bg-indigo-600 text-white font-extrabold py-3 px-6 rounded-2xl text-xs">Konfirmasi Pesanan 🚀</button>
               </div>
             )}
           </div>
@@ -488,7 +467,7 @@ export default function App() {
         {currentScreen === 'admin_dashboard' && (
           <div className="flex-1 flex flex-col bg-[#F7F8FC] pt-12">
             <div className="bg-slate-900 text-white p-4 flex justify-between items-center shrink-0">
-              <h1 className="font-black text-xs flex items-center gap-1">💼 CFO Panel Kontrol (Nimak)</h1>
+              <h1 className="font-black text-xs flex items-center gap-1">💼 CFO Panel (Nimak)</h1>
               <button onClick={() => {
                 setCurrentScreen('user_dashboard');
                 setUserTab('explore');
