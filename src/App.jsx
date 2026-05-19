@@ -25,7 +25,7 @@ const firebaseConfig = {
   appId: "1:958561448423:web:afae6cb869ba9d2d408d42"
 };
 
-const isFirebaseReady = true; // Langsung aktif menggunakan kredensial asli Anda
+const isFirebaseReady = true; 
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'nimak-bfe56-app';
 
 const app = initializeApp(firebaseConfig);
@@ -86,7 +86,11 @@ const initialOrders = [
   { id: 1, userName: "Mas Wahyu (Desainer)", total: 450000, date: '10 Mei 2026', items: [{ menuId: 7, name: 'Soto Sapi Premium Party Box', price: 22000, qty: 20, notes: "" }], status: 'Selesai' }
 ];
 
-const formatRp = (num) => 'Rp ' + num.toLocaleString('id-ID');
+// Pengaman format mata uang dari error crash undefined/NaN
+const formatRp = (num) => {
+  if (num === null || num === undefined || isNaN(num)) return 'Rp 0';
+  return 'Rp ' + num.toLocaleString('id-ID');
+};
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState('onboarding');
@@ -95,7 +99,7 @@ export default function App() {
   const [adminViewTab, setAdminViewTab] = useState('orang');
   
   const [currentUser, setCurrentUser] = useState(null);
-  const [user, setUser] = useState(null); // Firebase User Auth State
+  const [user, setUser] = useState(null); 
   const [restaurants, setRestaurants] = useState(initialRestaurants);
   const [menus, setMenus] = useState(initialMenus);
   const [orders, setOrders] = useState(initialOrders);
@@ -130,7 +134,7 @@ export default function App() {
 
   // --- 📡 TAHAP 2: REALTIME DATABASE SYNC (RULE 1 & 2 & 3) ---
   useEffect(() => {
-    if (!user) return; // Mencegah pemanggilan query sebelum auth selesai
+    if (!user) return; 
 
     // Strict Path sesuai RULE 1 untuk menghindari permission error
     const sessionDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current');
@@ -140,13 +144,17 @@ export default function App() {
       if (snap.exists()) {
         setSession(snap.data());
       } else {
-        setDoc(sessionDocRef, session);
+        // Tulis sesi bawaan jika dokumen di Firestore belum terbentuk
+        setDoc(sessionDocRef, session).catch(e => console.warn("Simpan sesi awal tertunda:", e.message));
       }
     }, (err) => console.error("Session Sync Error:", err));
 
     const unsubOrders = onSnapshot(ordersColRef, (snap) => {
       const list = []; 
-      snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+      snap.forEach(d => {
+        const data = d.data();
+        if (data) list.push({ id: d.id, ...data });
+      });
       if (list.length > 0) setOrders(list);
     }, (err) => console.error("Orders Sync Error:", err));
 
@@ -192,7 +200,7 @@ export default function App() {
 
   const handleCheckout = async () => {
     const newOrder = {
-      userName: currentUser.name,
+      userName: currentUser?.name || 'User',
       items: cart,
       total: cartTotal,
       date: 'Hari Ini',
@@ -228,22 +236,30 @@ export default function App() {
     }
   };
 
-  const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
-  const cartItemsCount = cart.reduce((sum, item) => sum + item.qty, 0);
-  const openRestaurants = restaurants.filter(r => session.openRestoIds.includes(r.id));
-  const filteredMenus = menus.filter(m => m.restaurant_id === selectedResto.id);
+  const cartTotal = cart.reduce((sum, item) => sum + ((item.price || 0) * (item.qty || 0)), 0);
+  const cartItemsCount = cart.reduce((sum, item) => sum + (item.qty || 0), 0);
+  const openRestaurants = restaurants.filter(r => (session?.openRestoIds || [1, 2, 3]).includes(r.id));
+  const filteredMenus = menus.filter(m => m.restaurant_id === selectedResto?.id);
 
-  // Sultan System Engine
+  // Sultan System Engine dengan Pengaman Objek Kosong (Crash-Safe)
   const dynamicBadges = useMemo(() => {
     const userStats = {};
-    const todayOrders = orders.filter(o => o.date === 'Hari Ini');
+    const todayOrders = orders.filter(o => o && o.date === 'Hari Ini');
+    
     orders.forEach(o => {
-      if (!userStats[o.userName]) userStats[o.userName] = { name: o.userName, totalSpend: 0, totalQty: 0, maxSingleQty: 0 };
-      let oQty = o.items ? o.items.reduce((s, i) => s + i.qty, 0) : 0;
-      userStats[o.userName].totalSpend += o.total;
-      userStats[o.userName].totalQty += oQty;
-      if (oQty > userStats[o.userName].maxSingleQty) userStats[o.userName].maxSingleQty = oQty;
+      if (!o) return;
+      const uName = o.userName || 'User';
+      if (!userStats[uName]) userStats[uName] = { name: uName, totalSpend: 0, totalQty: 0, maxSingleQty: 0 };
+      
+      let oQty = 0;
+      if (o.items && Array.isArray(o.items)) {
+        oQty = o.items.reduce((s, i) => s + (Number(i?.qty) || 0), 0);
+      }
+      userStats[uName].totalSpend += (Number(o.total) || 0);
+      userStats[uName].totalQty += oQty;
+      if (oQty > userStats[uName].maxSingleQty) userStats[uName].maxSingleQty = oQty;
     });
+    
     const uList = Object.values(userStats);
     const getTop = (list, scoreFn) => list.length ? list.reduce((a, b) => scoreFn(a) > scoreFn(b) ? a : b) : { name: '-', totalSpend: 0, totalQty: 0, maxSingleQty: 0 };
 
@@ -253,7 +269,7 @@ export default function App() {
       blackHoleBelly: getTop(uList, u => u.totalQty),
       avengersTeam: getTop(uList.filter(u => u.maxSingleQty > 5), u => u.maxSingleQty),
       investorUtama: getTop(uList, u => u.totalSpend),
-      ceoFlexing: todayOrders.length ? todayOrders.reduce((a, b) => a.total > b.total ? a : b) : { userName: '-' },
+      ceoFlexing: todayOrders.length ? todayOrders.reduce((a, b) => (Number(a.total) || 0) > (Number(b.total) || 0) ? a : b) : { userName: '-' },
       lastSurvivor: todayOrders.length ? todayOrders[todayOrders.length - 1] : { userName: '-' },
       dietBesok: todayOrders.length ? todayOrders[0] : { userName: '-' }
     };
@@ -261,26 +277,46 @@ export default function App() {
 
   const ordersByResto = useMemo(() => {
     const map = {};
-    orders.filter(o => o.date === 'Hari Ini').forEach(o => {
-      if (o.items) o.items.forEach(i => {
-        const mObj = menus.find(m => m.id === i.menuId);
-        if (mObj) {
-          if (!map[mObj.restaurant_id]) map[mObj.restaurant_id] = { restoName: restaurants.find(r => r.id === mObj.restaurant_id).name, totalCost: 0, itemsList: [] };
-          map[mObj.restaurant_id].totalCost += (i.price * i.qty);
-          map[mObj.restaurant_id].itemsList.push({ userName: o.userName, itemName: i.name, qty: i.qty, notes: i.notes });
-        }
-      });
+    orders.filter(o => o && o.date === 'Hari Ini').forEach(o => {
+      if (o.items && Array.isArray(o.items)) {
+        o.items.forEach(i => {
+          if (!i) return;
+          const mObj = menus.find(m => m.id === i.menuId);
+          if (mObj) {
+            if (!map[mObj.restaurant_id]) {
+              const rObj = restaurants.find(r => r.id === mObj.restaurant_id);
+              map[mObj.restaurant_id] = { 
+                restoName: rObj ? rObj.name : 'Restoran Lain', 
+                totalCost: 0, 
+                itemsList: [] 
+              };
+            }
+            map[mObj.restaurant_id].totalCost += ((Number(i.price) || 0) * (Number(i.qty) || 0));
+            map[mObj.restaurant_id].itemsList.push({ 
+              userName: o.userName || 'User', 
+              itemName: i.name || 'Menu', 
+              qty: Number(i.qty) || 0, 
+              notes: i.notes || '' 
+            });
+          }
+        });
+      }
     });
     return Object.values(map);
   }, [orders, menus, restaurants]);
 
   const ordersByMenu = useMemo(() => {
     const map = {};
-    orders.filter(o => o.date === 'Hari Ini').forEach(o => {
-      if (o.items) o.items.forEach(i => {
-        if (!map[i.menuId]) map[i.menuId] = { menuName: i.name, qty: 0 };
-        map[i.menuId].qty += i.qty;
-      });
+    orders.filter(o => o && o.date === 'Hari Ini').forEach(o => {
+      if (o.items && Array.isArray(o.items)) {
+        o.items.forEach(i => {
+          if (!i) return;
+          if (!map[i.menuId]) {
+            map[i.menuId] = { menuName: i.name || 'Menu', qty: 0 };
+          }
+          map[i.menuId].qty += (Number(i.qty) || 0);
+        });
+      }
     });
     return Object.values(map);
   }, [orders]);
@@ -334,12 +370,12 @@ export default function App() {
               <div className="flex-1 overflow-y-auto p-5 space-y-4 pb-24">
                 <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white p-4 rounded-3xl shadow-sm">
                   <span className="text-[9px] font-bold block">MISI AKTIF HARI INI</span>
-                  <p className="text-[10px] text-amber-300 font-semibold mt-1">🔥 Batas konfirmasi pesanan s/d {session.endTime} WIB</p>
+                  <p className="text-[10px] text-amber-300 font-semibold mt-1">🔥 Batas konfirmasi pesanan s/d {session?.endTime || '11:45'} WIB</p>
                 </div>
                 <div className="space-y-3">
                   {openRestaurants.map(r => (
                     <div key={r.id} className="bg-white rounded-3xl overflow-hidden border border-slate-200/60 shadow-sm">
-                      <img src={r.image} className="w-full h-24 object-cover"/>
+                      <img src={r.image} className="w-full h-24 object-cover" alt={r.name}/>
                       <div className="p-4 flex justify-between items-center">
                         <div><h4 className="font-black text-xs text-slate-800">{r.name}</h4><p className="text-[9px] text-slate-400">{r.distance} • {r.time}</p></div>
                         <button onClick={() => viewRestoDetail(r)} className="bg-indigo-600 text-white font-bold px-3 py-1.5 rounded-xl text-[10px]">Pilih Menu</button>
@@ -353,14 +389,14 @@ export default function App() {
             {userTab === 'my_orders' && (
               <div className="flex-1 overflow-y-auto p-5 space-y-4 pb-24">
                 <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Karcis Pesanan Aktif</h3>
-                {orders.filter(o => o.userName === currentUser?.name && o.date === 'Hari Ini').map(order => (
+                {orders.filter(o => o && o.userName === currentUser?.name && o.date === 'Hari Ini').map(order => (
                   <div key={order.id} className="bg-white rounded-3xl p-4 border border-slate-200 shadow-sm space-y-3">
                     <div className="flex justify-between border-b pb-2"><span className="font-black text-xs">{order.userName}</span><span className="bg-amber-400 text-[8px] font-black px-2 py-0.5 rounded-full">{order.status}</span></div>
                     <div className="space-y-1 text-xs text-slate-600 font-semibold">
-                      {order.items && order.items.map((i, idx) => <div key={idx} className="flex justify-between"><span>{i.qty}x {i.name}</span><span>{formatRp(i.price * i.qty)}</span></div>)}
+                      {order.items && order.items.map((i, idx) => <div key={idx} className="flex justify-between"><span>{i?.qty}x {i?.name}</span><span>{formatRp((i?.price || 0) * (i?.qty || 0))}</span></div>)}
                     </div>
                     <div className="border-t pt-2 flex justify-between font-black text-indigo-600 text-xs"><span>TOTAL</span><span>{formatRp(order.total)}</span></div>
-                    <div className="bg-slate-50 p-2 rounded-xl text-[9px] font-mono text-center border font-semibold text-slate-700">Transfer CFO: {session.bankAccount}</div>
+                    <div className="bg-slate-50 p-2 rounded-xl text-[9px] font-mono text-center border font-semibold text-slate-700">Transfer CFO: {session?.bankAccount}</div>
                   </div>
                 ))}
               </div>
@@ -375,7 +411,12 @@ export default function App() {
                 
                 {leaderboardSubTab === 'rank' && (
                   <div className="flex-1 overflow-y-auto p-5 space-y-2 pb-24">
-                    {Object.entries(orders.reduce((acc, o) => ({ ...acc, [o.userName]: (acc[o.userName] || 0) + o.total }), {})).sort((a,b)=>b[1]-a[1]).map(([name, total], i) => (
+                    {Object.entries(orders.reduce((acc, o) => {
+                      if (!o) return acc;
+                      const name = o.userName || 'User';
+                      const total = Number(o.total) || 0;
+                      return { ...acc, [name]: (acc[name] || 0) + total };
+                    }, {})).sort((a,b)=>b[1]-a[1]).map(([name, total], i) => (
                       <div key={i} className="bg-white p-3 rounded-xl border flex justify-between items-center text-xs shadow-sm">
                         <span className="font-black text-indigo-600">#{i+1} {name}</span><span className="font-bold text-slate-800">{formatRp(total)}</span>
                       </div>
@@ -419,7 +460,7 @@ export default function App() {
           <div className="flex-1 flex flex-col bg-[#F7F8FC] pt-12">
             <div className="p-4 bg-white border-b flex items-center gap-3 shrink-0">
               <button onClick={() => setCurrentScreen('user_dashboard')} className="p-1"><ArrowLeft size={18}/></button>
-              <h3 className="font-black text-sm text-slate-800">{selectedResto.name}</h3>
+              <h3 className="font-black text-sm text-slate-800">{selectedResto?.name}</h3>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-24">
               {filteredMenus.map(menu => {
@@ -457,7 +498,7 @@ export default function App() {
             <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-20">
               <div className="flex justify-between items-center p-3 bg-white border rounded-2xl shadow-sm">
                 <div><span className="font-bold text-xs text-slate-800 block">Sesi Order Gerbang</span><span className="text-[9px] text-slate-400">Buka/tutup lapak online</span></div>
-                <button onClick={handleToggleLapak} className={`text-[10px] font-black px-3 py-1.5 rounded-xl ${session.isOpen ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{session.isOpen ? 'BUKA' : 'TUTUP'}</button>
+                <button onClick={handleToggleLapak} className={`text-[10px] font-black px-3 py-1.5 rounded-xl ${session?.isOpen ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{session?.isOpen ? 'BUKA' : 'TUTUP'}</button>
               </div>
 
               {/* Segmented Controller 3 View */}
@@ -468,10 +509,10 @@ export default function App() {
               </div>
 
               {/* View 1: Per Orang */}
-              {adminViewTab === 'orang' && orders.filter(o => o.date === 'Hari Ini').map(o => (
+              {adminViewTab === 'orang' && orders.filter(o => o && o.date === 'Hari Ini').map(o => (
                 <div key={o.id} className="bg-white p-3 rounded-2xl border text-xs shadow-sm space-y-2">
                   <div className="flex justify-between font-bold border-b pb-1"><span>{o.userName}</span><span className="text-indigo-600">{formatRp(o.total)}</span></div>
-                  <p className="text-[10px] text-slate-500 font-semibold">{o.items ? o.items.map(i => `${i.qty}x ${i.name}`).join(', ') : '-'}</p>
+                  <p className="text-[10px] text-slate-500 font-semibold">{o.items ? o.items.map(i => `${i?.qty || 0}x ${i?.name || 'Menu'}`).join(', ') : '-'}</p>
                   <div className="flex justify-end gap-1.5 pt-1"><button onClick={() => handleUpdateOrderStatus(o.id, 'Diproses CFO')} className="bg-indigo-50 text-indigo-700 text-[9px] px-2 py-0.5 rounded">Proses</button><button onClick={() => handleUpdateOrderStatus(o.id, 'Selesai')} className="bg-emerald-50 text-emerald-700 text-[9px] px-2 py-0.5 rounded">Selesai</button></div>
                 </div>
               ))}
@@ -480,7 +521,7 @@ export default function App() {
               {adminViewTab === 'resto' && ordersByResto.map((r, i) => (
                 <div key={i} className="bg-white p-3 rounded-2xl border text-xs shadow-sm space-y-1.5">
                   <div className="flex justify-between font-black border-b pb-1 text-slate-800"><span>🏢 {r.restoName}</span><span>{formatRp(r.totalCost)}</span></div>
-                  {r.itemsList.map((it, idx) => <p key={idx} className="text-[10px] text-slate-500 font-semibold">• {it.qty}x {it.itemName} <span className="text-indigo-600 font-bold">({it.userName})</span></p>)}
+                  {r.itemsList && r.itemsList.map((it, idx) => <p key={idx} className="text-[10px] text-slate-500 font-semibold">• {it.qty}x {it.itemName} <span className="text-indigo-600 font-bold">({it.userName})</span></p>)}
                 </div>
               ))}
 
