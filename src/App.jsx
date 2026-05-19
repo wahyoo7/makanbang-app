@@ -5,37 +5,34 @@ import {
   ChevronRight, Receipt, Clock,
   Sparkles, Star, MessageSquare, Copy,
   MapPin, Navigation, Compass, Award,
-  Flame, Bell, History, Trophy
+  Flame, Bell, History, Trophy, ArrowLeft
 } from 'lucide-react';
 
-// --- INTEGRASI CORE CLOUD DATABASE (NPM SYSTEM) ---
+// --- INTEGRASI CORE CLOUD DATABASE ---
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, doc, setDoc, collection, onSnapshot, addDoc, updateDoc } from 'firebase/firestore';
 
 // ============================================================================
-// ⚠️ MASUKKAN CONFIG FIREBASE KAMU DI SINI
+// ⚙️ FIREBASE CONFIGURATION (KREDENSIAL ASLI DARI PROYEK NIMAK ANDA)
 // ============================================================================
 const firebaseConfig = {
-  apiKey: "PASTE_API_KEY_KAMU_DI_SINI",
-  authDomain: "PROJECT_ID_KAMU.firebaseapp.com",
-  projectId: "PROJECT_ID_KAMU",
-  storageBucket: "PROJECT_ID_KAMU.appspot.com",
-  messagingSenderId: "SENDER_ID_KAMU",
-  appId: "APP_ID_KAMU"
+  apiKey: "AIzaSyA4WWxScF_k7CeXYJWXPBQCU_z4E50oCA4",
+  authDomain: "nimak-bfe56.firebaseapp.com",
+  projectId: "nimak-bfe56",
+  storageBucket: "nimak-bfe56.firebasestorage.app",
+  messagingSenderId: "958561448423",
+  appId: "1:958561448423:web:afae6cb869ba9d2d408d42"
 };
 
-// Validasi otomatis mode database (Cloud vs Offline Mock)
-const isFirebaseReady = !!(firebaseConfig.apiKey && firebaseConfig.apiKey !== "AIzaSyA4WWxSCf_k7CeXYJWXPBQCU_z4E50oCA4");
-let app, auth, db;
+const isFirebaseReady = true; // Langsung aktif menggunakan kredensial asli Anda
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'nimak-bfe56-app';
 
-if (isFirebaseReady) {
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
-}
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
 
-// --- DATABASE DEFAULT SEEDING ---
+// --- SEED DATA CADANGAN (OTOMATIS DIGUNAKAN JIKA DATABASE KOSONG) ---
 const initialRestaurants = [
   { 
     id: 1, 
@@ -85,6 +82,7 @@ const initialMenus = [
 const initialOrders = [
   { id: 101, userName: "Mbak Sarah (Finance)", total: 39000, date: 'Hari Ini', items: [{ menuId: 1, name: 'Nasi Telur Dadar + Orek Tempe', price: 15000, qty: 1, notes: "" }, { menuId: 4, name: 'Paket Geprek Lava Mozzarella', price: 25000, qty: 1, notes: "" }], status: 'Selesai' },
   { id: 102, userName: "Mbak Rini (HRD)", total: 19000, date: 'Hari Ini', items: [{ menuId: 1, name: 'Nasi Telur Dadar + Orek Tempe', price: 15000, qty: 1, notes: "Oreknya basah" }, { menuId: 3, name: 'Es Teh Manis Jumbo Booster', price: 4000, qty: 1, notes: "" }], status: 'Diproses CFO' },
+  { id: 103, userName: "Mas Bimo (IT Support)", total: 89000, date: 'Hari Ini', items: [{ menuId: 4, name: 'Paket Geprek Lava Mozzarella', price: 25000, qty: 3, notes: "Sambal level 5!" }, { menuId: 5, name: 'Jamur Crispy Kriuk Nagih', price: 10000, qty: 1, notes: "" }, { menuId: 3, name: 'Es Teh Manis Jumbo Booster', price: 4000, qty: 1, notes: "" }], status: 'Menunggu Pembayaran' },
   { id: 1, userName: "Mas Wahyu (Desainer)", total: 450000, date: '10 Mei 2026', items: [{ menuId: 7, name: 'Soto Sapi Premium Party Box', price: 22000, qty: 20, notes: "" }], status: 'Selesai' }
 ];
 
@@ -97,7 +95,7 @@ export default function App() {
   const [adminViewTab, setAdminViewTab] = useState('orang');
   
   const [currentUser, setCurrentUser] = useState(null);
-  const [firebaseUser, setFirebaseUser] = useState(null);
+  const [user, setUser] = useState(null); // Firebase User Auth State
   const [restaurants, setRestaurants] = useState(initialRestaurants);
   const [menus, setMenus] = useState(initialMenus);
   const [orders, setOrders] = useState(initialOrders);
@@ -112,34 +110,84 @@ export default function App() {
     rejectMessage: 'Waduh petualangan kuliner hari ini sudah ditutup! 😭 Hubungi CFO jika darurat!'
   });
 
-  // Anonymous Authentication
+  // --- 🔐 TAHAP 1: MASUK TANPA IDENTITAS (RULE 3) ---
   useEffect(() => {
-    if (!isFirebaseReady) return;
-    signInAnonymously(auth).catch(err => console.warn("Firebase Auth Error: ", err));
-    const unsubscribe = onAuthStateChanged(auth, (user) => { if (user) setFirebaseUser(user); });
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.warn("Auth Firebase gagal, beralih ke Mode Offline:", err);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
     return () => unsubscribe();
   }, []);
 
-  // Realtime Database Sync
+  // --- 📡 TAHAP 2: REALTIME DATABASE SYNC (RULE 1 & 2 & 3) ---
   useEffect(() => {
-    if (!isFirebaseReady || !firebaseUser) return;
+    if (!user) return; // Mencegah pemanggilan query sebelum auth selesai
 
-    const unsubSession = onSnapshot(doc(db, 'session', 'current'), (snap) => {
-      if (snap.exists()) setSession(snap.data());
-    });
+    // Strict Path sesuai RULE 1 untuk menghindari permission error
+    const sessionDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current');
+    const ordersColRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
 
-    const unsubOrders = onSnapshot(collection(db, 'orders'), (snap) => {
-      const list = []; snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+    const unsubSession = onSnapshot(sessionDocRef, (snap) => {
+      if (snap.exists()) {
+        setSession(snap.data());
+      } else {
+        setDoc(sessionDocRef, session);
+      }
+    }, (err) => console.error("Session Sync Error:", err));
+
+    const unsubOrders = onSnapshot(ordersColRef, (snap) => {
+      const list = []; 
+      snap.forEach(d => list.push({ id: d.id, ...d.data() }));
       if (list.length > 0) setOrders(list);
-    });
+    }, (err) => console.error("Orders Sync Error:", err));
 
-    return () => { unsubSession(); unsubOrders(); };
-  }, [firebaseUser]);
+    return () => { 
+      unsubSession(); 
+      unsubOrders(); 
+    };
+  }, [user]);
 
   const handleLogin = (name, phone) => {
     const role = phone === '0000' ? 'admin' : 'user';
     setCurrentUser({ name, phone, role });
     setCurrentScreen(role === 'admin' ? 'admin_dashboard' : 'user_dashboard');
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setCart([]);
+    setCurrentScreen('onboarding');
+  };
+
+  const viewRestoDetail = (resto) => {
+    setSelectedResto(resto);
+    setCurrentScreen('restaurant_detail');
+  };
+
+  const handleUpdateCart = (menu, delta) => {
+    setCart(prev => {
+      const existing = prev.find(item => item.menuId === menu.id);
+      if (!existing) {
+        if (delta > 0) return [...prev, { menuId: menu.id, name: menu.name, price: menu.price, qty: 1, notes: '' }];
+        return prev;
+      }
+      const newQty = existing.qty + delta;
+      if (newQty <= 0) return prev.filter(item => item.menuId !== menu.id);
+      return prev.map(item => item.menuId === menu.id ? { ...item, qty: newQty } : item);
+    });
+  };
+
+  const handleUpdateNotes = (menuId, notes) => {
+    setCart(prev => prev.map(item => item.menuId === menuId ? { ...item, notes } : item));
   };
 
   const handleCheckout = async () => {
@@ -151,8 +199,9 @@ export default function App() {
       status: 'Menunggu Pembayaran'
     };
 
-    if (isFirebaseReady && firebaseUser) {
-      await addDoc(collection(db, 'orders'), newOrder);
+    if (user) {
+      const ordersColRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
+      await addDoc(ordersColRef, newOrder);
     } else {
       setOrders([...orders, { id: Date.now(), ...newOrder }]);
     }
@@ -162,8 +211,9 @@ export default function App() {
   };
 
   const handleUpdateOrderStatus = async (orderId, newStatus) => {
-    if (isFirebaseReady && firebaseUser) {
-      await updateDoc(doc(db, 'orders', orderId), { status: newStatus });
+    if (user) {
+      const orderDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
+      await updateDoc(orderDocRef, { status: newStatus });
     } else {
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
     }
@@ -172,7 +222,10 @@ export default function App() {
   const handleToggleLapak = async () => {
     const updated = { ...session, isOpen: !session.isOpen };
     setSession(updated);
-    if (isFirebaseReady && firebaseUser) await setDoc(doc(db, 'session', 'current'), updated);
+    if (user) {
+      const sessionDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current');
+      await setDoc(sessionDocRef, updated);
+    }
   };
 
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
@@ -258,8 +311,8 @@ export default function App() {
             <div className="my-auto space-y-4">
               <h2 className="text-xl font-black text-slate-800">Daftarkan Karaktermu!</h2>
               <div className="bg-white p-5 rounded-3xl border shadow-sm space-y-3">
-                <input type="text" placeholder="Nama Panggilan Kantor..." id="ln" className="w-full bg-slate-50 border p-3 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-500"/>
-                <input type="text" placeholder="Nomor Handphone..." id="lp" className="w-full bg-slate-50 border p-3 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-500"/>
+                <input type="text" placeholder="Nama Panggilan Kantor..." id="ln" defaultValue="Mas Wahyu" className="w-full bg-slate-50 border p-3 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-500"/>
+                <input type="text" placeholder="Nomor Handphone..." id="lp" defaultValue="0812345" className="w-full bg-slate-50 border p-3 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-500"/>
               </div>
             </div>
             <button onClick={() => handleLogin(document.getElementById('ln').value || 'User', document.getElementById('lp').value || '1')} className="w-full bg-indigo-600 text-white font-extrabold py-4 rounded-2xl text-xs">Masuk Dashboard 🚀</button>
@@ -307,7 +360,7 @@ export default function App() {
                       {order.items && order.items.map((i, idx) => <div key={idx} className="flex justify-between"><span>{i.qty}x {i.name}</span><span>{formatRp(i.price * i.qty)}</span></div>)}
                     </div>
                     <div className="border-t pt-2 flex justify-between font-black text-indigo-600 text-xs"><span>TOTAL</span><span>{formatRp(order.total)}</span></div>
-                    <div className="bg-slate-50 p-2 rounded-xl text-[9px] font-mono text-center border">Transfer CFO: {session.bankAccount}</div>
+                    <div className="bg-slate-50 p-2 rounded-xl text-[9px] font-mono text-center border font-semibold text-slate-700">Transfer CFO: {session.bankAccount}</div>
                   </div>
                 ))}
               </div>
@@ -369,7 +422,7 @@ export default function App() {
               <h3 className="font-black text-sm text-slate-800">{selectedResto.name}</h3>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-24">
-              {menus.filter(m => m.restaurant_id === selectedResto.id).map(menu => {
+              {filteredMenus.map(menu => {
                 const cItem = cart.find(c => c.menuId === menu.id);
                 const qty = cItem ? cItem.qty : 0;
                 return (
@@ -390,12 +443,15 @@ export default function App() {
           </div>
         )}
 
-        {/* SCREEN 5: CFO ADMIN PANEL (3 VIEW TABS BENAR & REALTIME) */}
+        {/* SCREEN 5: CFO ADMIN PANEL */}
         {currentScreen === 'admin_dashboard' && (
           <div className="flex-1 flex flex-col bg-[#F7F8FC] pt-12">
             <div className="bg-slate-900 text-white p-4 flex justify-between items-center shrink-0">
               <h1 className="font-black text-xs flex items-center gap-1">💼 CFO Panel Kontrol (Nimak)</h1>
-              <button onClick={() => setCurrentScreen('user_dashboard')} className="text-[10px] bg-slate-800 px-2 py-1 rounded text-slate-300">User Mode</button>
+              <button onClick={() => {
+                setCurrentScreen('user_dashboard');
+                setUserTab('explore');
+              }} className="text-[10px] bg-slate-800 px-2 py-1 rounded text-slate-300">User Mode</button>
             </div>
             
             <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-20">
@@ -404,7 +460,7 @@ export default function App() {
                 <button onClick={handleToggleLapak} className={`text-[10px] font-black px-3 py-1.5 rounded-xl ${session.isOpen ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{session.isOpen ? 'BUKA' : 'TUTUP'}</button>
               </div>
 
-              {/* Segmented Controller 3 View Sesuai PRD */}
+              {/* Segmented Controller 3 View */}
               <div className="flex bg-slate-200 p-1 rounded-xl border">
                 <button onClick={() => setAdminViewTab('orang')} className={`flex-1 py-1 text-[10px] font-bold rounded-lg ${adminViewTab === 'orang' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}>👤 Per Orang</button>
                 <button onClick={() => setAdminViewTab('resto')} className={`flex-1 py-1 text-[10px] font-bold rounded-lg ${adminViewTab === 'resto' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}>🏢 Per Resto</button>
@@ -415,7 +471,7 @@ export default function App() {
               {adminViewTab === 'orang' && orders.filter(o => o.date === 'Hari Ini').map(o => (
                 <div key={o.id} className="bg-white p-3 rounded-2xl border text-xs shadow-sm space-y-2">
                   <div className="flex justify-between font-bold border-b pb-1"><span>{o.userName}</span><span className="text-indigo-600">{formatRp(o.total)}</span></div>
-                  <p className="text-[10px] text-slate-500">{o.items ? o.items.map(i => `${i.qty}x ${i.name}`).join(', ') : '-'}</p>
+                  <p className="text-[10px] text-slate-500 font-semibold">{o.items ? o.items.map(i => `${i.qty}x ${i.name}`).join(', ') : '-'}</p>
                   <div className="flex justify-end gap-1.5 pt-1"><button onClick={() => handleUpdateOrderStatus(o.id, 'Diproses CFO')} className="bg-indigo-50 text-indigo-700 text-[9px] px-2 py-0.5 rounded">Proses</button><button onClick={() => handleUpdateOrderStatus(o.id, 'Selesai')} className="bg-emerald-50 text-emerald-700 text-[9px] px-2 py-0.5 rounded">Selesai</button></div>
                 </div>
               ))}
@@ -424,7 +480,7 @@ export default function App() {
               {adminViewTab === 'resto' && ordersByResto.map((r, i) => (
                 <div key={i} className="bg-white p-3 rounded-2xl border text-xs shadow-sm space-y-1.5">
                   <div className="flex justify-between font-black border-b pb-1 text-slate-800"><span>🏢 {r.restoName}</span><span>{formatRp(r.totalCost)}</span></div>
-                  {r.itemsList.map((it, idx) => <p key={idx} className="text-[10px] text-slate-500 font-medium">• {it.qty}x {it.itemName} <span className="text-indigo-600">({it.userName})</span></p>)}
+                  {r.itemsList.map((it, idx) => <p key={idx} className="text-[10px] text-slate-500 font-semibold">• {it.qty}x {it.itemName} <span className="text-indigo-600 font-bold">({it.userName})</span></p>)}
                 </div>
               ))}
 
