@@ -156,14 +156,20 @@ export default function App() {
 
     const unsubRestos = onSnapshot(restosRef, (snap) => {
       const list = []; snap.forEach(d => list.push({ id: d.id, ...d.data() }));
-      if (list.length > 0) setRestaurants(list);
-      else initialRestaurants.forEach(r => setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'restaurants', r.id), r));
+      setRestaurants(list.length > 0 ? list : initialRestaurants);
+      // Seeding awal jika benar-benar kosong
+      if (list.length === 0) {
+        initialRestaurants.forEach(r => setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'restaurants', r.id), r));
+      }
     });
 
     const unsubMenus = onSnapshot(menusRef, (snap) => {
       const list = []; snap.forEach(d => list.push({ id: d.id, ...d.data() }));
-      if (list.length > 0) setMenus(list);
-      else initialMenus.forEach(m => setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'menus', m.id), m));
+      setMenus(list.length > 0 ? list : initialMenus);
+      // Seeding awal jika benar-benar kosong
+      if (list.length === 0) {
+        initialMenus.forEach(m => setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'menus', m.id), m));
+      }
     });
 
     return () => { unsubSession(); unsubOrders(); unsubRestos(); unsubMenus(); };
@@ -202,7 +208,21 @@ export default function App() {
   const handleAddResto = async () => {
     if (!newResto.name || !newResto.category) return alert("Nama dan Kategori wajib diisi!");
     const finalResto = { ...newResto, rating: 5.0, reviews: 0, image: newResto.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80' };
-    if(userAuth) await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'restaurants'), finalResto);
+    
+    try {
+      if(userAuth) {
+        // Simpan ke database
+        const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'restaurants'), finalResto);
+        // Otomatis setel BUKA (Hijau) agar langsung muncul di dashboard karyawan
+        const updatedSession = { ...session, openRestoIds: [...(session.openRestoIds || []), docRef.id] };
+        setSession(updatedSession);
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current'), updatedSession);
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Gagal menambahkan restoran.");
+    }
+    
     setNewResto({ name: '', category: '', tag: '', distance: 'Kantor', time: '15 mnt', image: '' });
   };
 
@@ -256,6 +276,7 @@ export default function App() {
   // --- FUNGSI USER GENERAL ---
   const handleStartAdventure = () => setCurrentScreen('login');
   const handleLogin = (name, phone) => {
+    // Kunci Akses Role CFO
     const role = phone === '0000' ? 'admin' : 'user';
     setCurrentUser({ name, phone, role });
     setCurrentScreen(role === 'admin' ? 'admin_dashboard' : 'user_dashboard');
@@ -302,7 +323,7 @@ export default function App() {
   const cartTotal = cart.reduce((sum, item) => sum + ((item.price || 0) * (item.qty || 0)), 0);
   const cartItemsCount = cart.reduce((sum, item) => sum + (item.qty || 0), 0);
   
-  // HANYA TAMPILKAN RESTO YANG AKTIF (DIPILIH CFO)
+  // HANYA TAMPILKAN RESTO YANG AKTIF (DIPILIH CFO) KE USER
   const openRestaurants = restaurants.filter(r => (session?.openRestoIds || []).includes(r.id)); 
   const filteredMenus = menus.filter(m => m.restaurant_id === selectedResto?.id);
 
@@ -390,9 +411,16 @@ export default function App() {
               <h1 className="text-3xl font-black text-slate-800 leading-none">Welcome to <br/><span className="text-indigo-600 bg-indigo-100 px-3 py-1 rounded-2xl inline-block mt-1">Nimak</span></h1>
               <p className="text-xs text-slate-500 max-w-[240px] mx-auto">Sistem Petualangan Makan Siang Kantor Seru, Cepat, & Kompetitif.</p>
             </div>
-            <button onClick={handleStartAdventure} className="w-full bg-indigo-600 text-white font-extrabold py-4 rounded-2xl shadow-lg shadow-indigo-500/30 flex justify-between px-6 text-sm hover:bg-indigo-700 active:scale-95 transition">
-              <span>Mulai Petualangan</span><ChevronRight size={18}/>
-            </button>
+            
+            <div className="space-y-3">
+              <button onClick={handleStartAdventure} className="w-full bg-indigo-600 text-white font-extrabold py-4 rounded-2xl shadow-lg shadow-indigo-500/30 flex justify-between px-6 text-sm hover:bg-indigo-700 active:scale-95 transition">
+                <span>Mulai Petualangan</span><ChevronRight size={18}/>
+              </button>
+              <div className="flex justify-between items-center px-2 mt-4">
+                <span className="text-xs text-slate-400 font-semibold cursor-pointer hover:text-indigo-600" onClick={() => handleLogin('Admin CFO', '0000')}>Masuk CFO (Admin)</span>
+                <span className="text-[10px] text-slate-400 font-bold bg-slate-200 px-2 py-0.5 rounded-full">Nimak v3.6</span>
+              </div>
+            </div>
           </div>
         )}
 
@@ -521,7 +549,10 @@ export default function App() {
               <button onClick={() => setUserTab('explore')} className={`flex flex-col items-center text-[8px] font-bold transition ${userTab === 'explore' ? 'text-amber-400 scale-110' : 'hover:text-white'}`}><Compass size={16}/>EXPLORE</button>
               <button onClick={() => setUserTab('my_orders')} className={`flex flex-col items-center text-[8px] font-bold transition ${userTab === 'my_orders' ? 'text-amber-400 scale-110' : 'hover:text-white'}`}><Receipt size={16}/>TIKET SAYA</button>
               <button onClick={() => setUserTab('leaderboard')} className={`flex flex-col items-center text-[8px] font-bold transition ${userTab === 'leaderboard' ? 'text-amber-400 scale-110' : 'hover:text-white'}`}><Trophy size={16}/>SULTAN</button>
-              <button onClick={() => setCurrentScreen('admin_dashboard')} className="flex flex-col items-center text-[8px] font-bold hover:text-white transition"><Store size={16}/>CFO PANEL</button>
+              {/* KUNCI KEAMANAN: HANYA MUNCUL UNTUK ADMIN */}
+              {currentUser?.role === 'admin' && (
+                <button onClick={() => setCurrentScreen('admin_dashboard')} className="flex flex-col items-center text-[8px] font-bold hover:text-white transition"><Store size={16}/>CFO PANEL</button>
+              )}
             </div>
           </div>
         )}
@@ -560,7 +591,7 @@ export default function App() {
           </div>
         )}
 
-        {/* SCREEN 5: CFO ADMIN PANEL (SANGAT COMPLIANT DENGAN PRD) */}
+        {/* SCREEN 5: CFO ADMIN PANEL */}
         {currentScreen === 'admin_dashboard' && (
           <div className="flex-1 flex flex-col bg-[#F7F8FC] pt-12">
             <div className="bg-slate-900 text-white p-4 flex flex-col gap-3 shrink-0 shadow-md z-10">
@@ -620,7 +651,7 @@ export default function App() {
                 </>
               )}
 
-              {/* --- TAB: KELOLA MASTER DATA (SESUAI PRD: BISA EDIT & TOGGLE OPEN) --- */}
+              {/* --- TAB: KELOLA MASTER DATA --- */}
               {cfoMainTab === 'kelola' && (
                 <div className="space-y-6">
                   {/* Form Tambah Resto */}
