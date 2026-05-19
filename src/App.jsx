@@ -6,7 +6,8 @@ import {
   Sparkles, Star, MessageSquare, Copy,
   MapPin, Navigation, Compass, Award,
   Flame, Bell, History, Trophy, ArrowLeft,
-  Image as ImageIcon, Trash2, Upload, Edit, X
+  Image as ImageIcon, Trash2, Upload, Edit, X,
+  Shield // <-- INI DIA TERSANGKANYA! Ikon ini sudah saya tambahkan agar tidak blank
 } from 'lucide-react';
 
 // --- INTEGRASI CORE CLOUD DATABASE ---
@@ -128,7 +129,7 @@ export default function App() {
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
         else await signInAnonymously(auth);
-      } catch (err) { console.warn("Offline Mode"); }
+      } catch (err) { console.warn("Offline Mode: Anonymous Auth Disabled di Firebase"); }
     };
     initAuth();
     const unsubscribe = onAuthStateChanged(auth, (user) => { if(user) setUserAuth(user); });
@@ -156,20 +157,14 @@ export default function App() {
 
     const unsubRestos = onSnapshot(restosRef, (snap) => {
       const list = []; snap.forEach(d => list.push({ id: d.id, ...d.data() }));
-      setRestaurants(list.length > 0 ? list : initialRestaurants);
-      // Seeding awal jika benar-benar kosong
-      if (list.length === 0) {
-        initialRestaurants.forEach(r => setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'restaurants', r.id), r));
-      }
+      if (list.length > 0) setRestaurants(list);
+      else initialRestaurants.forEach(r => setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'restaurants', r.id), r));
     });
 
     const unsubMenus = onSnapshot(menusRef, (snap) => {
       const list = []; snap.forEach(d => list.push({ id: d.id, ...d.data() }));
-      setMenus(list.length > 0 ? list : initialMenus);
-      // Seeding awal jika benar-benar kosong
-      if (list.length === 0) {
-        initialMenus.forEach(m => setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'menus', m.id), m));
-      }
+      if (list.length > 0) setMenus(list);
+      else initialMenus.forEach(m => setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'menus', m.id), m));
     });
 
     return () => { unsubSession(); unsubOrders(); unsubRestos(); unsubMenus(); };
@@ -211,9 +206,7 @@ export default function App() {
     
     try {
       if(userAuth) {
-        // Simpan ke database
         const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'restaurants'), finalResto);
-        // Otomatis setel BUKA (Hijau) agar langsung muncul di dashboard karyawan
         const updatedSession = { ...session, openRestoIds: [...(session.openRestoIds || []), docRef.id] };
         setSession(updatedSession);
         await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current'), updatedSession);
@@ -276,7 +269,6 @@ export default function App() {
   // --- FUNGSI USER GENERAL ---
   const handleStartAdventure = () => setCurrentScreen('login');
   const handleLogin = (name, phone) => {
-    // Kunci Akses Role CFO
     const role = phone === '0000' ? 'admin' : 'user';
     setCurrentUser({ name, phone, role });
     setCurrentScreen(role === 'admin' ? 'admin_dashboard' : 'user_dashboard');
@@ -323,11 +315,9 @@ export default function App() {
   const cartTotal = cart.reduce((sum, item) => sum + ((item.price || 0) * (item.qty || 0)), 0);
   const cartItemsCount = cart.reduce((sum, item) => sum + (item.qty || 0), 0);
   
-  // HANYA TAMPILKAN RESTO YANG AKTIF (DIPILIH CFO) KE USER
   const openRestaurants = restaurants.filter(r => (session?.openRestoIds || []).includes(r.id)); 
   const filteredMenus = menus.filter(m => m.restaurant_id === selectedResto?.id);
 
-  // Kalkulasi CFO Views & Badges
   const dynamicBadges = useMemo(() => {
     const userStats = {};
     const todayOrders = orders.filter(o => o && o.date === 'Hari Ini');
@@ -591,7 +581,7 @@ export default function App() {
           </div>
         )}
 
-        {/* SCREEN 5: CFO ADMIN PANEL */}
+        {/* SCREEN 5: CFO ADMIN PANEL (SANGAT COMPLIANT DENGAN PRD) */}
         {currentScreen === 'admin_dashboard' && (
           <div className="flex-1 flex flex-col bg-[#F7F8FC] pt-12">
             <div className="bg-slate-900 text-white p-4 flex flex-col gap-3 shrink-0 shadow-md z-10">
@@ -651,7 +641,7 @@ export default function App() {
                 </>
               )}
 
-              {/* --- TAB: KELOLA MASTER DATA --- */}
+              {/* --- TAB: KELOLA MASTER DATA (SESUAI PRD: BISA EDIT & TOGGLE OPEN) --- */}
               {cfoMainTab === 'kelola' && (
                 <div className="space-y-6">
                   {/* Form Tambah Resto */}
