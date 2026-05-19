@@ -14,23 +14,29 @@ import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, collection, onSnapshot, addDoc, updateDoc } from 'firebase/firestore';
 
 // ============================================================================
-// ⚙️ FIREBASE CONFIGURATION (KREDENSIAL ASLI NIMAK)
+// ⚠️ GANTI BAGIAN INI DENGAN COPY-PASTE DARI FIREBASE CONSOLE ANDA
 // ============================================================================
 const firebaseConfig = {
-  apiKey: "AIzaSyA4WWxScF_k7CeXYJWXPBQCU_z4E50oCA4",
+  apiKey: "AIzaSyA4WWxSCf_k7CeXYJWXPBQCU_z4E50oCA4",
   authDomain: "nimak-bfe56.firebaseapp.com",
   projectId: "nimak-bfe56",
   storageBucket: "nimak-bfe56.firebasestorage.app",
   messagingSenderId: "958561448423",
-  appId: "1:958561448423:web:afae6cb869ba9d2d408d42"
+  appId: "1:958561448423:web:afae6cb869ba9d2d408d42",
+  measurementId: "G-43MJCJ34ZD"
 };
 
-// Inisialisasi Firebase Murni
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+// Cek otomatis apakah config sudah diisi dengan benar
+const isFirebaseReady = !!(firebaseConfig.apiKey && firebaseConfig.apiKey !== "PASTE_API_KEY_KAMU_DI_SINI" && !firebaseConfig.apiKey.includes("AIzaSyA4WWxScF"));
 
-// --- SEED DATA CADANGAN ---
+let app, auth, db;
+if (isFirebaseReady) {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+}
+
+// --- SEED DATA CADANGAN (HANYA MUNCUL JIKA OFFLINE/ERROR) ---
 const initialRestaurants = [
   { id: 1, name: 'Warteg Bahari Kingdom', rating: 4.9, reviews: 320, category: 'Local Culinary • Cozy', image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80', tag: 'Terpopuler 🔥', distance: '200m dari Kantor', time: '15-20 mnt' },
   { id: 2, name: 'Geprek Bensu Volcano', rating: 4.8, reviews: 154, category: 'Spicy Grill • Fast Food', image: 'https://images.unsplash.com/photo-1562967914-608f82629710?auto=format&fit=crop&w=600&q=80', tag: 'Promo Juara 🏷️', distance: '800m dari Kantor', time: '20-25 mnt' },
@@ -48,7 +54,7 @@ const initialMenus = [
 ];
 
 const initialOrders = [
-  { id: "mock1", userName: "Mbak Sarah (Finance)", total: 39000, date: 'Hari Ini', items: [{ menuId: 1, name: 'Nasi Telur Dadar + Orek Tempe', price: 15000, qty: 1, notes: "" }, { menuId: 4, name: 'Paket Geprek Lava Mozzarella', price: 25000, qty: 1, notes: "" }], status: 'Selesai' }
+  { id: "mock1", userName: "Sistem Offline", total: 0, date: 'Hari Ini', items: [{ menuId: 1, name: 'Terkoneksi ke Data Lokal', price: 0, qty: 1, notes: "Menunggu koneksi Firebase" }], status: 'Selesai' }
 ];
 
 // Pengaman format mata uang dari error crash
@@ -81,6 +87,8 @@ export default function App() {
 
   // --- LOGIN OTOMATIS FIREBASE ---
   useEffect(() => {
+    if (!isFirebaseReady) return;
+
     signInAnonymously(auth).catch((error) => {
       console.error("Gagal login anonim ke Firebase:", error);
     });
@@ -95,13 +103,10 @@ export default function App() {
 
   // --- AMBIL DATA DARI DATABASE ---
   useEffect(() => {
-    if (!userAuth) return; 
-
-    // Referensi Database Bersih & Sederhana
-    const sessionRef = doc(db, 'session', 'current');
-    const ordersRef = collection(db, 'orders');
+    if (!isFirebaseReady || !userAuth) return; 
 
     // Dengerin perubahan Sesi (Buka/Tutup Lapak)
+    const sessionRef = doc(db, 'session', 'current');
     const unsubSession = onSnapshot(sessionRef, (snap) => {
       if (snap.exists()) {
         setSession(snap.data());
@@ -111,6 +116,7 @@ export default function App() {
     }, (error) => console.error("Error ambil sesi:", error));
 
     // Dengerin perubahan Order
+    const ordersRef = collection(db, 'orders');
     const unsubOrders = onSnapshot(ordersRef, (snap) => {
       const list = []; 
       snap.forEach(d => {
@@ -118,6 +124,8 @@ export default function App() {
       });
       if (list.length > 0) {
         setOrders(list);
+      } else {
+        setOrders([]); // Set ke kosong jika belum ada orderan beneran
       }
     }, (error) => console.error("Error ambil order:", error));
 
@@ -127,7 +135,6 @@ export default function App() {
     };
   }, [userAuth]);
 
-  // FUNGSI INI YANG TADI TERHAPUS DAN BIKIN ERROR BLANK:
   const handleStartAdventure = () => {
     setCurrentScreen('login');
   };
@@ -176,13 +183,15 @@ export default function App() {
       timestamp: Date.now() // Tambahan agar bisa diurutkan
     };
 
-    if (userAuth) {
+    if (isFirebaseReady && userAuth) {
       try {
         await addDoc(collection(db, 'orders'), newOrder);
       } catch (error) {
         console.error("Gagal mengirim pesanan:", error);
         alert("Gagal terhubung ke database. Pastikan Rules Firebase sudah diubah menjadi 'true'.");
       }
+    } else {
+        setOrders([...orders, { id: Date.now(), ...newOrder }]);
     }
     
     setCart([]);
@@ -191,19 +200,21 @@ export default function App() {
   };
 
   const handleUpdateOrderStatus = async (orderId, newStatus) => {
-    if (userAuth) {
+    if (isFirebaseReady && userAuth) {
       try {
         await updateDoc(doc(db, 'orders', orderId), { status: newStatus });
       } catch (error) {
         console.error("Gagal update status:", error);
       }
+    } else {
+        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
     }
   };
 
   const handleToggleLapak = async () => {
     const updated = { ...session, isOpen: !session.isOpen };
     setSession(updated);
-    if (userAuth) {
+    if (isFirebaseReady && userAuth) {
       try {
         await setDoc(doc(db, 'session', 'current'), updated);
       } catch(error) {
