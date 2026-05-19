@@ -9,7 +9,48 @@ import {
   Shield, Zap, User, Heart, Target, Sparkle
 } from 'lucide-react';
 
-// --- MOCK DATABASE (DENGAN SKENARIO GELAR HARI INI & SEBULAN) ---
+// --- INTEGRASI FIREBASE FIREBASE ---
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
+import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, addDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+
+// ============================================================================
+// ⚙️ KONFIGURASI FIREBASE CLOUD DATABASE
+// ============================================================================
+// Jika dideploy di platform kami, config ini otomatis terisi.
+// Untuk deploy mandiri di Vercel, ganti objek di bawah ini dengan Config Firebase Anda!
+const firebaseConfigPlaceholder = {
+  apiKey: "",
+  authDomain: "makanbang-prod.firebaseapp.com",
+  projectId: "makanbang-prod",
+  storageBucket: "makanbang-prod.appspot.com",
+  messagingSenderId: "1234567890",
+  appId: "1:12345:web:12345"
+};
+
+// Deteksi otomatis environment config dari platform kami
+const firebaseConfig = typeof __firebase_config !== 'undefined' 
+  ? JSON.parse(__firebase_config) 
+  : firebaseConfigPlaceholder;
+
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'makanbang-prod-app';
+
+// Inisialisasi Firebase aman (Fallback ke Mode Offline jika config belum dipasang)
+let app, auth, db;
+let isFirebaseReady = false;
+
+if (firebaseConfig && firebaseConfig.apiKey) {
+  try {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+    isFirebaseReady = true;
+  } catch (error) {
+    console.warn("Koneksi Firebase gagal, beralih ke Mode Simulasi Offline.", error);
+  }
+}
+
+// --- DATABASE CADANGAN / DEFAULT SEEDING ---
 const initialRestaurants = [
   { 
     id: 1, 
@@ -40,7 +81,7 @@ const initialRestaurants = [
     reviews: 412, 
     category: 'Warm Soup • Authentic', 
     image: 'https://images.unsplash.com/photo-1596797038530-2c107229654b?auto=format&fit=crop&w=600&q=80',
-    tag: 'Pilihan OB ⭐',
+    tag: 'Pilihan CFO ⭐',
     distance: '1.2km dari Kantor',
     time: '25-30 mnt'
   }
@@ -57,9 +98,8 @@ const initialMenus = [
 ];
 
 const initialOrders = [
-  // --- ORDER AKTIF HARI INI ---
   {
-    id: 1684395000001, // Paling Pagi (Diet Mulai Besok)
+    id: 1684395000001,
     userName: "Mbak Sarah (Finance)",
     total: 39000,
     date: 'Hari Ini',
@@ -78,10 +118,10 @@ const initialOrders = [
       { menuId: 1, name: 'Nasi Telur Dadar + Orek Tempe', price: 15000, qty: 1, notes: "Oreknya basah ya mas" },
       { menuId: 3, name: 'Es Teh Manis Jumbo Booster', price: 4000, qty: 1, notes: "" },
     ],
-    status: 'Diproses OB'
+    status: 'Diproses CFO'
   },
   {
-    id: 1684395500000, // Pemesan Termahal Hari Ini (CEO of Flexing Food)
+    id: 1684395500000,
     userName: "Mas Bimo (IT Support)",
     total: 89000,
     date: 'Hari Ini',
@@ -91,69 +131,125 @@ const initialOrders = [
       { menuId: 3, name: 'Es Teh Manis Jumbo Booster', price: 4000, qty: 1, notes: "" }
     ],
     status: 'Menunggu Pembayaran'
-  },
-  {
-    id: 1684395999999, // Pemesan Terakhir Hari Ini (The Last Survivor)
-    userName: "Mas Adi (Copywriter)",
-    total: 22000,
-    date: 'Hari Ini',
-    items: [
-      { menuId: 7, name: 'Soto Sapi Kuah Bening', price: 22000, qty: 1, notes: "Kuah banyak" }
-    ],
-    status: 'Menunggu Pembayaran'
-  },
-
-  // --- RIWAYAT SEBULAN LALU (Pemicu Gelar Tambahan) ---
-  {
-    id: 1,
-    userName: "Mas Wahyu (Desainer)", // Total Spend Termahal Sebulan (Selera Elit)
-    total: 450000,
-    date: '10 Mei 2026',
-    items: [{ menuId: 7, name: 'Soto Sapi Premium Party Box', price: 22000, qty: 20, notes: "" }], // Banyak Item sekaligus (The Avengers Team & Black Hole Belly)
-    status: 'Selesai'
-  },
-  {
-    id: 2,
-    userName: "Mas Bimo (IT Support)",
-    total: 220000,
-    date: '12 Mei 2026',
-    items: [{ menuId: 4, name: 'Geprek Lava x8 + Jamur x2', price: 220000, qty: 1, notes: "" }],
-    status: 'Selesai'
-  },
-  {
-    id: 3,
-    userName: "Mbak Rini (HRD)",
-    total: 150000,
-    date: '14 Mei 2026',
-    items: [{ menuId: 1, name: 'Nasi Telur Dadar + Orek Tempe', price: 15000, qty: 10, notes: "" }],
-    status: 'Selesai'
   }
 ];
 
 const formatRp = (num) => 'Rp ' + num.toLocaleString('id-ID');
 
 export default function App() {
-  // Navigation Screens State
   const [currentScreen, setCurrentScreen] = useState('onboarding');
-  const [userTab, setUserTab] = useState('explore'); // "explore" | "my_orders" | "leaderboard"
-  const [leaderboardSubTab, setLeaderboardSubTab] = useState('rank'); // "rank" | "badges"
+  const [userTab, setUserTab] = useState('explore');
+  const [leaderboardSubTab, setLeaderboardSubTab] = useState('rank');
+  const [adminViewTab, setAdminViewTab] = useState('orang');
   
-  // App States
+  // Real States
   const [currentUser, setCurrentUser] = useState(null);
-  const [restaurants] = useState(initialRestaurants);
-  const [menus] = useState(initialMenus);
+  const [firebaseUser, setFirebaseUser] = useState(null);
+  const [restaurants, setRestaurants] = useState(initialRestaurants);
+  const [menus, setMenus] = useState(initialMenus);
   const [orders, setOrders] = useState(initialOrders);
   const [selectedResto, setSelectedResto] = useState(initialRestaurants[0]);
   const [cart, setCart] = useState([]);
   
-  // Configuration
   const [session, setSession] = useState({
     isOpen: true,
     openRestoIds: [1, 2, 3],
     endTime: '11:45',
-    bankAccount: 'BCA 872-019-2831 a.n Joko Susilo (OB)',
-    rejectMessage: 'Waduh petualangan kuliner hari ini sudah ditutup! 😭 Hubungi OB jika darurat!'
+    bankAccount: 'BCA 872-019-2831 a.n Joko Susilo (CFO)',
+    rejectMessage: 'Waduh petualangan kuliner hari ini sudah ditutup! 😭 Hubungi CFO jika darurat!'
   });
+
+  // --- 🔐 PROSES AUTENTIKASI FIREBASE (RULE 3) ---
+  useEffect(() => {
+    if (!isFirebaseReady) return;
+
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.warn("Auth Firebase gagal, beralih ke Mode Offline:", err);
+      }
+    };
+
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) setFirebaseUser(user);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // --- 📡 CLOUD DATABASE REALTIME SYNC (RULE 1 & RULE 2) ---
+  useEffect(() => {
+    if (!isFirebaseReady || !firebaseUser) return;
+
+    // A. SYNC SESSION CONFIGURATION
+    const sessionDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current');
+    const unsubSession = onSnapshot(sessionDocRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setSession(snapshot.data());
+      } else {
+        // Seed default session jika database baru dibuat
+        setDoc(sessionDocRef, session);
+      }
+    }, (err) => console.error("Session Sync Error:", err));
+
+    // B. SYNC ORDERS DATABASE
+    const ordersColRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
+    const unsubOrders = onSnapshot(ordersColRef, (snapshot) => {
+      const list = [];
+      snapshot.forEach(doc => {
+        list.push({ id: doc.id, ...doc.data() });
+      });
+      if (list.length > 0) {
+        setOrders(list);
+      } else {
+        // Seeding database kosong dengan data simulasi awal agar siap pakai
+        initialOrders.forEach(async (order) => {
+          await addDoc(ordersColRef, order);
+        });
+      }
+    }, (err) => console.error("Orders Sync Error:", err));
+
+    // C. SYNC RESTAURANTS
+    const restosColRef = collection(db, 'artifacts', appId, 'public', 'data', 'restaurants');
+    const unsubRestos = onSnapshot(restosColRef, (snapshot) => {
+      const list = [];
+      snapshot.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
+      if (list.length > 0) {
+        setRestaurants(list);
+      } else {
+        initialRestaurants.forEach(async (r) => {
+          await addDoc(restosColRef, r);
+        });
+      }
+    }, (err) => console.error("Restaurants Sync Error:", err));
+
+    // D. SYNC MENUS
+    const menusColRef = collection(db, 'artifacts', appId, 'public', 'data', 'menus');
+    const unsubMenus = onSnapshot(menusColRef, (snapshot) => {
+      const list = [];
+      snapshot.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
+      if (list.length > 0) {
+        setMenus(list);
+      } else {
+        initialMenus.forEach(async (m) => {
+          await addDoc(menusColRef, m);
+        });
+      }
+    }, (err) => console.error("Menus Sync Error:", err));
+
+    return () => {
+      unsubSession();
+      unsubOrders();
+      unsubRestos();
+      unsubMenus();
+    };
+  }, [firebaseUser]);
 
   const handleStartAdventure = () => {
     setCurrentScreen('login');
@@ -201,15 +297,23 @@ export default function App() {
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
   const cartItemsCount = cart.reduce((sum, item) => sum + item.qty, 0);
 
-  const handleCheckout = () => {
-    setOrders([...orders, {
-      id: Date.now(),
+  const handleCheckout = async () => {
+    const newOrder = {
       userName: currentUser.name,
       items: cart,
       total: cartTotal,
       date: 'Hari Ini',
       status: 'Menunggu Pembayaran'
-    }]);
+    };
+
+    if (isFirebaseReady && firebaseUser) {
+      const ordersColRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
+      await addDoc(ordersColRef, newOrder);
+    } else {
+      // Fallback Mode Offline
+      setOrders([...orders, { id: Date.now(), ...newOrder }]);
+    }
+    
     setCart([]);
     setCurrentScreen('user_dashboard');
     setUserTab('my_orders');
@@ -220,7 +324,6 @@ export default function App() {
     const userStats = {};
     const todayOrders = orders.filter(o => o.date === 'Hari Ini');
 
-    // Proses akumulasi data per user
     orders.forEach(o => {
       if (!userStats[o.userName]) {
         userStats[o.userName] = {
@@ -234,7 +337,7 @@ export default function App() {
         };
       }
 
-      let orderQty = o.items.reduce((sum, item) => sum + item.qty, 0);
+      let orderQty = o.items ? o.items.reduce((sum, item) => sum + item.qty, 0) : 0;
       userStats[o.userName].totalSpend += o.total;
       userStats[o.userName].totalQty += orderQty;
       userStats[o.userName].orderCount += 1;
@@ -260,22 +363,12 @@ export default function App() {
       return { name: top.name, score: scoreFn(top) };
     };
 
-    // 1. The Mukbang Master 👑 (Pernah pesan > 3 menu/item dalam 1 order)
     const mukbangMaster = getTopUser(userList, u => u.maxSingleOrderQty > 3, u => u.maxSingleOrderQty);
-
-    // 2. Selera Elit 🌾 (Total belanja sebulan paling tinggi)
     const seleraElit = getTopUser(userList, u => true, u => u.totalSpend);
-
-    // 3. Black Hole Belly 🌌 (Paling banyak makan secara jumlah porsi total)
     const blackHoleBelly = getTopUser(userList, u => true, u => u.totalQty);
-
-    // 4. The Avengers Team (Sering pesan > 5 item sekaligus kayak mau ngasih makan superhero)
     const avengersTeam = getTopUser(userList, u => u.maxSingleOrderQty > 5, u => u.maxSingleOrderQty);
-
-    // 5. Investor Utama Resto 💼 (Simulasi pembelanja terbanyak mingguan)
     const investorUtama = getTopUser(userList, u => true, u => u.totalSpend * 0.9);
 
-    // 6. CEO of Flexing Food (Pemesan termahal khusus HARI INI)
     let ceoFlexing = { name: '-', score: 0 };
     if (todayOrders.length > 0) {
       todayOrders.forEach(o => {
@@ -285,14 +378,12 @@ export default function App() {
       });
     }
 
-    // 7. The Last Survivor (Orang terakhir yang memesan hari ini)
     let lastSurvivor = { name: '-', time: '-' };
     if (todayOrders.length > 0) {
       const sortedToday = [...todayOrders].sort((a, b) => b.id - a.id);
       lastSurvivor = { name: sortedToday[0].userName };
     }
 
-    // 8. Diet Mulai Besok (Paling gaspol pesan duluan hari ini)
     let dietBesok = { name: '-', time: '-' };
     if (todayOrders.length > 0) {
       const sortedToday = [...todayOrders].sort((a, b) => a.id - b.id);
@@ -310,6 +401,99 @@ export default function App() {
       dietBesok
     };
   }, [orders]);
+
+  // --- REKAP KOMPREHENSIF UNTUK CFO (REALTIME) ---
+  const ordersByResto = useMemo(() => {
+    const todayOrders = orders.filter(o => o.date === 'Hari Ini');
+    const restoMap = {};
+
+    todayOrders.forEach(order => {
+      if (order.items) {
+        order.items.forEach(item => {
+          const menuObj = menus.find(m => m.id === item.menuId);
+          if (menuObj) {
+            const rId = menuObj.restaurant_id;
+            const restoObj = restaurants.find(r => r.id === rId);
+            const restoName = restoObj ? restoObj.name : 'Restoran Lain';
+
+            if (!restoMap[rId]) {
+              restoMap[rId] = {
+                restoName,
+                totalCost: 0,
+                itemsList: []
+              };
+            }
+            restoMap[rId].totalCost += (item.price * item.qty);
+            restoMap[rId].itemsList.push({
+              userName: order.userName,
+              itemName: item.name,
+              qty: item.qty,
+              price: item.price,
+              notes: item.notes
+            });
+          }
+        });
+      }
+    });
+    return Object.values(restoMap);
+  }, [orders, menus, restaurants]);
+
+  const ordersByMenu = useMemo(() => {
+    const todayOrders = orders.filter(o => o.date === 'Hari Ini');
+    const menuMap = {};
+
+    todayOrders.forEach(order => {
+      if (order.items) {
+        order.items.forEach(item => {
+          if (!menuMap[item.menuId]) {
+            menuMap[item.menuId] = {
+              menuName: item.name,
+              qty: 0,
+              price: item.price,
+              restoName: ''
+            };
+            const menuObj = menus.find(m => m.id === item.menuId);
+            if (menuObj) {
+              const restoObj = restaurants.find(r => r.id === menuObj.restaurant_id);
+              menuMap[item.menuId].restoName = restoObj ? restoObj.name : '';
+            }
+          }
+          menuMap[item.menuId].qty += item.qty;
+        });
+      }
+    });
+    return Object.values(menuMap);
+  }, [orders, menus, restaurants]);
+
+  // Aksi update status untuk admin CFO
+  const handleUpdateOrderStatus = async (orderId, newStatus) => {
+    if (isFirebaseReady && firebaseUser) {
+      const orderDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
+      await updateDoc(orderDocRef, { status: newStatus });
+    } else {
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+    }
+  };
+
+  const handleToggleLapak = async () => {
+    const nextOpenState = !session.isOpen;
+    const updatedSession = { ...session, isOpen: nextOpenState };
+    setSession(updatedSession);
+    
+    if (isFirebaseReady && firebaseUser) {
+      const sessionDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current');
+      await setDoc(sessionDocRef, updatedSession);
+    }
+  };
+
+  const handleUpdateEndTime = async (time) => {
+    const updatedSession = { ...session, endTime: time };
+    setSession(updatedSession);
+    if (isFirebaseReady && firebaseUser) {
+      const sessionDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current');
+      await setDoc(sessionDocRef, updatedSession);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center font-sans antialiased p-4">
@@ -370,7 +554,7 @@ export default function App() {
                 </div>
               </button>
               <div className="flex justify-between items-center px-2">
-                <span className="text-xs text-slate-400 font-semibold cursor-pointer hover:text-indigo-600" onClick={() => handleLogin('Admin OB', '0000')}>Masuk OB</span>
+                <span className="text-xs text-slate-400 font-semibold cursor-pointer hover:text-indigo-600" onClick={() => handleLogin('Admin CFO', '0000')}>Masuk CFO (Admin)</span>
                 <span className="text-xs text-slate-400 font-semibold">MakanBang v3.5</span>
               </div>
             </div>
@@ -388,7 +572,7 @@ export default function App() {
               <div>
                 <span className="text-xs font-extrabold text-amber-600 bg-amber-100 px-3 py-1 rounded-full uppercase tracking-wider">Level 1: Lapar</span>
                 <h2 className="text-2xl font-black text-slate-800 mt-2">Daftarkan Karaktermu!</h2>
-                <p className="text-xs text-slate-500 leading-relaxed">Masukkan identitas panggilan kantormu agar OB tidak salah antar makanan.</p>
+                <p className="text-xs text-slate-500 leading-relaxed">Masukkan identitas panggilan kantormu agar CFO tidak salah antar makanan.</p>
               </div>
 
               <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-xl space-y-4">
@@ -441,7 +625,7 @@ export default function App() {
                 <div>
                   <h4 className="font-black text-xs text-slate-800">{currentUser?.name}</h4>
                   <p className="text-[9px] text-indigo-600 font-semibold flex items-center gap-0.5">
-                    <Award size={10}/> Gelar Makan: {orders.filter(o => o.userName === currentUser?.name).length >= 5 ? 'Sultan Kolosal' : 'Petualang Rasa'}
+                    <Award size={10}/> Level {orders.filter(o => o.userName === currentUser?.name).length >= 5 ? '3: Sultan Makan' : '1: Musafir Lapar'}
                   </p>
                 </div>
               </div>
@@ -507,7 +691,7 @@ export default function App() {
                               {resto.tag}
                             </span>
                             <div>
-                              <span className="text-[8px] font-bold text-amber-400 uppercase tracking-wider">REKOMENDASI OB</span>
+                              <span className="text-[8px] font-bold text-amber-400 uppercase tracking-wider">REKOMENDASI CFO</span>
                               <h4 className="text-sm font-black text-white">{resto.name}</h4>
                             </div>
                           </div>
@@ -565,7 +749,7 @@ export default function App() {
                         </div>
 
                         <div className="p-4 space-y-2 border-b border-dashed border-slate-200">
-                          {order.items.map((item, i) => (
+                          {order.items && order.items.map((item, i) => (
                             <div key={i} className="flex justify-between text-xs font-semibold">
                               <span className="text-slate-600">{item.qty}x {item.name}</span>
                               <span className="text-slate-800 font-bold">{formatRp(item.price * item.qty)}</span>
@@ -580,7 +764,7 @@ export default function App() {
                           </div>
                           
                           <div className="bg-white p-2.5 rounded-xl border border-slate-200">
-                            <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mb-1">Transfer ke Rekening OB</p>
+                            <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mb-1">Transfer ke Rekening CFO</p>
                             <div className="flex justify-between items-center">
                               <span className="font-mono text-[10px] font-bold text-indigo-700">{session.bankAccount}</span>
                               <button 
@@ -609,7 +793,7 @@ export default function App() {
                           <div className="space-y-1">
                             <div className="flex items-center gap-1.5">
                               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                              <span className="font-bold text-xs text-slate-800">{hist.items[0]?.name || "Menu Gabungan"}</span>
+                              <span className="font-bold text-xs text-slate-800">{hist.items?.[0]?.name || "Menu Gabungan"}</span>
                             </div>
                             <p className="text-[10px] text-slate-400 font-medium">Tanggal Transaksi: {hist.date}</p>
                           </div>
@@ -723,16 +907,15 @@ export default function App() {
                   </div>
                 )}
 
-                {/* SUB TAB: GELAR & ACHIEVEMENTS (DENGAN DEKLARASI DARI USER) */}
+                {/* SUB TAB: GELAR & ACHIEVEMENTS */}
                 {leaderboardSubTab === 'badges' && (
                   <div className="flex-1 overflow-y-auto px-5 pt-4 pb-24 space-y-3">
                     {[
                       {
                         title: "The Mukbang Master 👑",
-                        desc: "Pernah memesan lebih dari 3 porsi piring makanan dalam satu order sekaligus.",
+                        desc: "Pernah memesan lebih dari 3 menu makanan dalam satu order.",
                         winner: dynamicBadges.mukbangMaster.name,
                         metric: dynamicBadges.mukbangMaster.score ? `${dynamicBadges.mukbangMaster.score} Porsi Sekaligus` : '-',
-                        bgColor: "bg-gradient-to-r from-red-500/10 to-orange-500/10 border-red-200 text-red-700",
                         badgeIcon: "🔥"
                       },
                       {
@@ -740,7 +923,6 @@ export default function App() {
                         desc: "Gaya sultan sejati, total pesanan termahal dalam kurun sebulan terakhir.",
                         winner: dynamicBadges.seleraElit.name,
                         metric: formatRp(dynamicBadges.seleraElit.score),
-                        bgColor: "bg-gradient-to-r from-amber-500/10 to-yellow-500/10 border-amber-200 text-amber-700",
                         badgeIcon: "💎"
                       },
                       {
@@ -748,15 +930,13 @@ export default function App() {
                         desc: "Perut tanpa dasar, paling banyak memesan dari segi jumlah porsi total.",
                         winner: dynamicBadges.blackHoleBelly.name,
                         metric: `${dynamicBadges.blackHoleBelly.score} Porsi Terbabat`,
-                        bgColor: "bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border-indigo-200 text-indigo-700",
                         badgeIcon: "🌀"
                       },
                       {
                         title: "The Avengers Team 🛡️",
-                        desc: "Pesanan makan malam/siang jumbo sampai dikira mau kasih makan pahlawan super.",
+                        desc: "Pesanan makanan lebih dari 5 porsi sampai dikira mau kasih makan satu tim pahlawan super.",
                         winner: dynamicBadges.avengersTeam.name,
                         metric: dynamicBadges.avengersTeam.score ? `${dynamicBadges.avengersTeam.score} Porsi Pesta` : '-',
-                        bgColor: "bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border-blue-200 text-blue-700",
                         badgeIcon: "🚀"
                       },
                       {
@@ -764,7 +944,6 @@ export default function App() {
                         desc: "Penyokong dana warung makan teraktif dengan total order mingguan tertinggi.",
                         winner: dynamicBadges.investorUtama.name,
                         metric: formatRp(dynamicBadges.investorUtama.score),
-                        bgColor: "bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border-emerald-200 text-emerald-700",
                         badgeIcon: "📈"
                       },
                       {
@@ -772,7 +951,6 @@ export default function App() {
                         desc: "Paling jor-joran dan megah, pemegang nilai order termahal khusus hari ini.",
                         winner: dynamicBadges.ceoFlexing.name,
                         metric: formatRp(dynamicBadges.ceoFlexing.score),
-                        bgColor: "bg-gradient-to-r from-pink-500/10 to-rose-500/10 border-pink-200 text-pink-700",
                         badgeIcon: "✨"
                       },
                       {
@@ -780,15 +958,13 @@ export default function App() {
                         desc: "Ujung tanduk petualangan, pemesan paling mepet terakhir hari ini.",
                         winner: dynamicBadges.lastSurvivor.name,
                         metric: "Last Order Hari Ini",
-                        bgColor: "bg-gradient-to-r from-slate-500/10 to-gray-500/10 border-slate-200 text-slate-700",
                         badgeIcon: "⛺"
                       },
                       {
-                        title: "Diet Mulai Besok 🏃",
+                        title: "Diet Mulai Besok 🥗",
                         desc: "Selalu gerak cepat mengamankan antrean, pemesan paling awal dalam minggu ini.",
                         winner: dynamicBadges.dietBesok.name,
                         metric: "Order Pertama Hari Ini",
-                        bgColor: "bg-gradient-to-r from-teal-500/10 to-green-500/10 border-teal-200 text-teal-700",
                         badgeIcon: "🥗"
                       }
                     ].map((badge, index) => (
@@ -839,7 +1015,7 @@ export default function App() {
                 className="flex flex-col items-center gap-0.5 hover:text-white transition"
               >
                 <Store size={18} />
-                <span className="text-[8px] font-bold uppercase">OB Panel</span>
+                <span className="text-[8px] font-bold uppercase">CFO Panel</span>
               </button>
             </div>
           </div>
@@ -939,7 +1115,7 @@ export default function App() {
         {currentScreen === 'admin_dashboard' && (
           <div className="flex-1 flex flex-col bg-[#F7F8FC] pt-12">
             <div className="bg-slate-900 text-white p-4 flex justify-between items-center shrink-0">
-              <h1 className="font-black text-sm tracking-tight flex items-center gap-1"><Store size={16}/> OB Panel Kontrol</h1>
+              <h1 className="font-black text-sm tracking-tight flex items-center gap-1"><Store size={16}/> CFO Panel Kontrol</h1>
               <button onClick={() => {
                 setCurrentScreen('user_dashboard');
                 setUserTab('explore');
@@ -967,51 +1143,147 @@ export default function App() {
                     <span className="text-[10px] text-slate-400">Izinkan Karyawan Order</span>
                   </div>
                   <button 
-                    onClick={() => setSession({...session, isOpen: !session.isOpen})}
+                    onClick={handleToggleLapak}
                     className={`font-bold text-xs py-2 px-4 rounded-xl transition ${session.isOpen ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}
                   >
                     {session.isOpen ? 'Terbuka' : 'Tertutup'}
                   </button>
                 </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Batas Waktu Order</label>
+                  <input 
+                    type="time" 
+                    value={session.endTime} 
+                    onChange={e => handleUpdateEndTime(e.target.value)}
+                    className="w-full bg-slate-50 border p-3 rounded-2xl text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
               </div>
 
               {/* Rekap Order Masuk */}
-              <div className="space-y-2">
-                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Daftar Order Aktif Hari Ini</h3>
-                {orders.filter(o => o.date === 'Hari Ini').map(order => (
-                  <div key={order.id} className="bg-white p-4 rounded-2xl border border-slate-150 shadow-sm text-xs">
-                    <div className="flex justify-between items-center border-b pb-2 mb-2">
-                      <span className="font-bold text-slate-800">{order.userName}</span>
-                      <span className="font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-lg">{formatRp(order.total)}</span>
-                    </div>
-                    <ul className="space-y-1 text-[10px] text-slate-500 font-medium">
-                      {order.items.map((item, i) => (
-                        <li key={i}>{item.qty}x {item.name} {item.notes && <span className="text-amber-600 italic">("{item.notes}")</span>}</li>
-                      ))}
-                    </ul>
-                    <div className="mt-3 pt-2.5 border-t flex justify-between items-center">
-                      <span className="text-[9px] text-slate-400 uppercase font-bold">Ubah Status</span>
-                      <div className="flex gap-1">
-                        <button 
-                          onClick={() => {
-                            setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'Diproses OB' } : o));
-                          }}
-                          className="bg-indigo-50 text-indigo-700 text-[8px] font-bold px-2 py-1 rounded hover:bg-indigo-100"
-                        >
-                          Proses
-                        </button>
-                        <button 
-                          onClick={() => {
-                            setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'Selesai' } : o));
-                          }}
-                          className="bg-emerald-50 text-emerald-700 text-[8px] font-bold px-2 py-1 rounded hover:bg-emerald-100"
-                        >
-                          Selesai
-                        </button>
-                      </div>
-                    </div>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Rekap Order Hari Ini</h3>
+                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">
+                    {orders.filter(o => o.date === 'Hari Ini').length} Pesanan
+                  </span>
+                </div>
+
+                {/* Segmented Controller / Tabs */}
+                <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+                  <button 
+                    onClick={() => setAdminViewTab('orang')}
+                    className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all ${adminViewTab === 'orang' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    👤 Per Orang
+                  </button>
+                  <button 
+                    onClick={() => setAdminViewTab('resto')}
+                    className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all ${adminViewTab === 'resto' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    🏢 Per Resto
+                  </button>
+                  <button 
+                    onClick={() => setAdminViewTab('menu')}
+                    className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all ${adminViewTab === 'menu' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    📋 Per Menu
+                  </button>
+                </div>
+
+                {/* RENDERING BASED ON TABS */}
+                {adminViewTab === 'orang' && (
+                  <div className="space-y-3">
+                    {orders.filter(o => o.date === 'Hari Ini').length === 0 ? (
+                      <p className="text-xs text-slate-400 italic text-center py-4 bg-white rounded-2xl border border-slate-150">Belum ada pesanan masuk hari ini.</p>
+                    ) : (
+                      orders.filter(o => o.date === 'Hari Ini').map(order => (
+                        <div key={order.id} className="bg-white p-4 rounded-2xl border border-slate-150 shadow-sm text-xs">
+                          <div className="flex justify-between items-center border-b pb-2 mb-2">
+                            <span className="font-bold text-slate-800">{order.userName}</span>
+                            <span className="font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-lg">{formatRp(order.total)}</span>
+                          </div>
+                          <ul className="space-y-1 text-[10px] text-slate-500 font-medium">
+                            {order.items && order.items.map((item, i) => (
+                              <li key={i}>{item.qty}x {item.name} {item.notes && <span className="text-amber-600 italic">("{item.notes}")</span>}</li>
+                            ))}
+                          </ul>
+                          <div className="mt-3 pt-2.5 border-t flex justify-between items-center">
+                            <span className="text-[9px] text-slate-400 uppercase font-bold">Ubah Status ({order.status})</span>
+                            <div className="flex gap-1">
+                              <button 
+                                onClick={() => handleUpdateOrderStatus(order.id, 'Diproses CFO')}
+                                className="bg-indigo-50 text-indigo-700 text-[8px] font-bold px-2 py-1 rounded hover:bg-indigo-100"
+                              >
+                                Proses
+                              </button>
+                              <button 
+                                onClick={() => handleUpdateOrderStatus(order.id, 'Selesai')}
+                                className="bg-emerald-50 text-emerald-700 text-[8px] font-bold px-2 py-1 rounded hover:bg-emerald-100"
+                              >
+                                Selesai
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
-                ))}
+                )}
+
+                {adminViewTab === 'resto' && (
+                  <div className="space-y-3">
+                    {ordersByResto.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic text-center py-4 bg-white rounded-2xl border border-slate-150">Belum ada pesanan dari restoran mana pun hari ini.</p>
+                    ) : (
+                      ordersByResto.map((resto, idx) => (
+                        <div key={idx} className="bg-white p-4 rounded-2xl border border-slate-150 shadow-sm text-xs space-y-2">
+                          <div className="flex justify-between items-center border-b pb-2">
+                            <span className="font-extrabold text-slate-800 flex items-center gap-1">🏢 {resto.restoName}</span>
+                            <span className="text-[10px] font-black text-indigo-600">{formatRp(resto.totalCost)}</span>
+                          </div>
+                          <ul className="space-y-2 text-[10px] text-slate-600">
+                            {resto.itemsList.map((item, i) => (
+                              <li key={i} className="bg-slate-50 p-2 rounded-xl border border-slate-100">
+                                <div className="flex justify-between font-bold text-slate-700">
+                                  <span>{item.qty}x {item.itemName}</span>
+                                  <span className="text-indigo-500 font-medium">untuk {item.userName}</span>
+                                </div>
+                                {item.notes && <p className="text-amber-600 italic mt-1 font-semibold">💬 Catatan: "{item.notes}"</p>}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {adminViewTab === 'menu' && (
+                  <div className="space-y-3">
+                    {ordersByMenu.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic text-center py-4 bg-white rounded-2xl border border-slate-150">Belum ada menu yang terdaftar hari ini.</p>
+                    ) : (
+                      <div className="bg-white rounded-2xl border border-slate-150 shadow-sm overflow-hidden divide-y divide-slate-100">
+                        {ordersByMenu.map((menu, idx) => (
+                          <div key={idx} className="p-3.5 flex justify-between items-center text-xs hover:bg-slate-50 transition-colors">
+                            <div className="space-y-0.5">
+                              <span className="font-bold text-slate-800">{menu.menuName}</span>
+                              <p className="text-[9px] text-slate-400 font-medium">{menu.restoName}</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase">Total:</span>
+                              <span className="font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg text-xs">
+                                {menu.qty} Porsi
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
