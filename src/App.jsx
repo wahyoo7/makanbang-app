@@ -127,6 +127,11 @@ export default function App() {
     };
   }, [userAuth]);
 
+  // FUNGSI INI YANG TADI TERHAPUS DAN BIKIN ERROR BLANK:
+  const handleStartAdventure = () => {
+    setCurrentScreen('login');
+  };
+
   const handleLogin = (name, phone) => {
     const role = phone === '0000' ? 'admin' : 'user';
     setCurrentUser({ name, phone, role });
