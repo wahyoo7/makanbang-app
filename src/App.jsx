@@ -7,7 +7,8 @@ import {
   MapPin, Navigation, Compass, Award,
   Flame, Bell, History, Trophy, ArrowLeft,
   Image as ImageIcon, Trash2, Upload, Edit, X,
-  Shield, CheckCircle, CreditCard, Coins, UserCheck, Users
+  Shield, CheckCircle, CreditCard, Coins, UserCheck, Users,
+  Lock, Unlock, Delete
 } from 'lucide-react';
 
 // --- INTEGRASI CORE CLOUD DATABASE ---
@@ -79,7 +80,7 @@ const compressImage = (file) => {
 };
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState('onboarding');
+  const [currentScreen, setCurrentScreen] = useState('onboarding'); // onboarding | login | pin_entry | user_dashboard | admin_dashboard | restaurant_detail
   const [userTab, setUserTab] = useState('explore');
   const [leaderboardSubTab, setLeaderboardSubTab] = useState('rank');
   
@@ -109,13 +110,17 @@ export default function App() {
   const editFileInputRef = useRef(null);
 
   // States checkout baru
-  const [paymentMethod, setPaymentMethod] = useState('transfer'); // 'transfer' | 'cash'
+  const [paymentMethod, setPaymentMethod] = useState('transfer'); 
   const [cashAmountInput, setCashAmountInput] = useState('');
   const [orderNotes, setOrderNotes] = useState('');
 
-  // States Registrasi Baru
+  // States Registrasi Baru (DIREDUKSI: Divisi dihapus!)
   const [isRegistering, setIsRegistering] = useState(false);
-  const [regForm, setRegForm] = useState({ name: '', phone: '', division: 'IT' });
+  const [regForm, setRegForm] = useState({ name: '', phone: '' });
+
+  // States PIN CFO
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState(false);
 
   // States Rekonsiliasi CFO
   const [reconcileAmounts, setReconcileAmounts] = useState({});
@@ -127,7 +132,7 @@ export default function App() {
     endTime: '11:45',
     bankAccount: 'BCA 872-019-2831 a.n Joko Susilo (CFO)',
     rejectMessage: 'Waduh petualangan kuliner hari ini sudah ditutup! 😭 Hubungi CFO jika darurat!',
-    allowTransfer: true // Toggle dinamis cash-only vs allow transfer
+    allowTransfer: true 
   });
 
   // --- 📡 SINKRONISASI DATABASE REALTIME INSTAN ---
@@ -203,7 +208,7 @@ export default function App() {
 
   const handleAddResto = async () => {
     if (!newResto.name || !newResto.category) return alert("Nama dan Kategori wajib diisi!");
-    const finalResto = { ...newResto, rating: 5.0, reviews: 0, image: newResto.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80' };
+    const finalResto = { ...newResto, rating: 5.0, reviews: 0, image: newResto.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80' };
     
     try {
       const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'restaurants'), finalResto);
@@ -255,12 +260,13 @@ export default function App() {
   const handleStartAdventure = () => setCurrentScreen('login');
   
   const handleLogin = async (phoneOrId) => {
-    if (!phoneOrId) return alert("Masukkan Nomor Handphone atau ID!");
+    if (!phoneOrId) return alert("Masukkan Nomor Handphone!");
     
-    // Pintu Akses Admin CFO
+    // Alihkan ke halaman input PIN jika mendeteksi bypass admin
     if (phoneOrId === '0000') {
-      setCurrentUser({ name: 'Chief Food Officer (CFO)', phone: '0000', role: 'admin', division: 'CFO Office' });
-      setCurrentScreen('admin_dashboard');
+      setPinInput('');
+      setPinError(false);
+      setCurrentScreen('pin_entry');
       return;
     }
 
@@ -271,20 +277,42 @@ export default function App() {
       setCurrentUser({ ...matchedUser, role: 'user' });
       setCurrentScreen('user_dashboard');
     } else {
-      // Tawarkan Registrasi Resmi
-      setRegForm({ name: '', phone: phoneOrId, division: 'IT' });
+      // Tawarkan Registrasi Resmi (DIREDUKSI: Tanpa Divisi)
+      setRegForm({ name: '', phone: phoneOrId });
       setIsRegistering(true);
     }
   };
 
+  // Verifikasi PIN CFO Admin
+  const handleVerifyCFOPin = (num) => {
+    setPinError(false);
+    if (pinInput.length >= 4) return;
+    
+    const nextPin = pinInput + num;
+    setPinInput(nextPin);
+
+    if (nextPin.length === 4) {
+      // PIN CFO default "0000"
+      if (nextPin === '0000') {
+        setCurrentUser({ name: 'Chief Food Officer (CFO)', phone: '0000', role: 'admin' });
+        setCurrentScreen('admin_dashboard');
+        setPinInput('');
+      } else {
+        setTimeout(() => {
+          setPinError(true);
+          setPinInput('');
+        }, 200);
+      }
+    }
+  };
+
   const handleRegisterEmployee = async () => {
-    if (!regForm.name || !regForm.phone) return alert("Harap lengkapi formulir registrasi!");
+    if (!regForm.name || !regForm.phone) return alert("Harap isi nama lengkap Anda!");
     
     try {
       const newUserDoc = {
         name: regForm.name,
         phone: regForm.phone,
-        division: regForm.division,
         timestamp: Date.now()
       };
       const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'users'), newUserDoc);
@@ -322,7 +350,6 @@ export default function App() {
 
     const newOrder = {
       userName: currentUser?.name || 'User',
-      division: currentUser?.division || 'IT',
       items: cart,
       total: cartTotal,
       date: 'Hari Ini',
@@ -464,7 +491,6 @@ export default function App() {
     orders.forEach(o => {
       if (!o) return;
       const uName = o.userName;
-      // Filter status selesai dan uang yang belum direkonsiliasi lunas penuh oleh CFO
       const totalCost = Number(o.total) || 0;
       const received = Number(o.cfoReceivedAmount) || 0;
       const debt = Math.max(0, totalCost - received);
@@ -485,7 +511,7 @@ export default function App() {
           <div className="flex-1 flex flex-col justify-between p-8 pt-12 bg-gradient-to-b from-violet-100 via-white to-purple-50">
             <div className="flex justify-between items-center shrink-0">
               <span className="text-sm font-black text-violet-600 bg-white px-3.5 py-1.5 rounded-full shadow-sm border border-violet-100">⭐ Nimak</span>
-              <span className="text-[10px] text-violet-600 font-extrabold bg-violet-100 px-3 py-1 rounded-full uppercase tracking-wider">v3.9 PROD</span>
+              <span className="text-[10px] text-violet-600 font-extrabold bg-violet-100 px-3 py-1 rounded-full uppercase tracking-wider">v1.6 PROD</span>
             </div>
 
             <div className="text-center space-y-6 my-auto">
@@ -522,10 +548,14 @@ export default function App() {
               
               <div className="flex justify-between items-center px-2">
                 <span 
-                  onClick={() => handleLogin('0000')} 
-                  className="text-xs font-bold text-violet-600 hover:text-violet-800 cursor-pointer underline underline-offset-4"
+                  onClick={() => {
+                    setPinInput('');
+                    setPinError(false);
+                    setCurrentScreen('pin_entry');
+                  }} 
+                  className="text-xs font-bold text-violet-600 hover:text-violet-800 cursor-pointer underline underline-offset-4 flex items-center gap-1.5"
                 >
-                  CFO Portal (Admin)
+                  <Lock size={12}/> CFO Portal (Admin)
                 </span>
                 <span className="text-[10px] text-slate-400 font-extrabold">BY CHIEF FOOD OFFICER</span>
               </div>
@@ -553,7 +583,7 @@ export default function App() {
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Kunci Akses Unik</label>
                     <input 
                       type="text" 
-                      placeholder="Masukkan No. HP atau ID Anda..." 
+                      placeholder="Masukkan No. HP Anda..." 
                       id="loginInput" 
                       className="w-full bg-slate-50 border-2 border-slate-100 focus:border-violet-500 focus:bg-white p-4 rounded-2xl text-xs font-black focus:outline-none transition-all duration-200"
                     />
@@ -568,7 +598,7 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              // --- FORM REGISTRASI RESMI KARYAWAN ---
+              // --- FORM REGISTRASI RESMI KARYAWAN (DIREDUKSI: Divisi dihapus!) ---
               <div className="my-auto space-y-6">
                 <div>
                   <span className="text-xs font-black text-violet-700 bg-violet-100 px-3.5 py-1.5 rounded-full uppercase tracking-wider">Karyawan Baru</span>
@@ -597,21 +627,6 @@ export default function App() {
                       className="w-full bg-slate-100 border-2 border-slate-100 p-3.5 rounded-xl text-xs font-bold text-slate-500"
                     />
                   </div>
-
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Divisi / Tim Kerja</label>
-                    <select 
-                      value={regForm.division} 
-                      onChange={e => setRegForm({...regForm, division: e.target.value})} 
-                      className="w-full bg-slate-50 border-2 border-slate-100 focus:border-violet-500 focus:bg-white p-3.5 rounded-xl text-xs font-bold focus:outline-none transition"
-                    >
-                      <option value="IT">Teknologi / IT</option>
-                      <option value="HRD">Sumber Daya Manusia / HRD</option>
-                      <option value="Finance">Keuangan / Finance</option>
-                      <option value="Creative">Kreatif / Desain</option>
-                      <option value="Marketing">Pemasaran / Marketing</option>
-                    </select>
-                  </div>
                 </div>
 
                 <button 
@@ -622,6 +637,75 @@ export default function App() {
                 </button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* SCREEN CFO PIN_ENTRY: LAYAR PIN INTEGRAL INTERAKTIF (PERLINDUNGAN PORTAL) */}
+        {currentScreen === 'pin_entry' && (
+          <div className="flex-1 flex flex-col justify-between p-8 pt-12 bg-gradient-to-b from-violet-100 via-white to-purple-50">
+            <button onClick={() => setCurrentScreen('onboarding')} className="w-10 h-10 bg-white border border-slate-100 rounded-full flex items-center justify-center shadow-md hover:bg-slate-50 active:scale-95 transition self-start">
+              <ArrowLeft size={18} className="text-slate-700 stroke-[3]" />
+            </button>
+
+            <div className="my-auto flex flex-col items-center space-y-6">
+              <div className="text-center space-y-1.5">
+                <div className="w-12 h-12 rounded-full bg-violet-100 text-violet-600 flex items-center justify-center mx-auto mb-2">
+                  <Lock size={20} className="stroke-[2.5]" />
+                </div>
+                <h2 className="text-xl font-black text-slate-900">Verifikasi Otoritas CFO</h2>
+                <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">Masukkan 4-digit PIN Keamanan Anda</p>
+                <p className="text-[10px] text-slate-400 italic">Default PIN: 0000</p>
+              </div>
+
+              {/* PIN Bulatan Visual */}
+              <div className={`flex justify-center gap-4.5 py-4 ${pinError ? 'animate-bounce' : ''}`}>
+                {[0, 1, 2, 3].map((idx) => (
+                  <div 
+                    key={idx} 
+                    className={`w-4 h-4 rounded-full border-2 transition-all duration-150 ${pinError ? 'border-red-500 bg-red-100' : pinInput.length > idx ? 'border-violet-600 bg-violet-600 scale-110 shadow-sm shadow-violet-500/50' : 'border-slate-300 bg-transparent'}`}
+                  ></div>
+                ))}
+              </div>
+
+              {pinError && (
+                <p className="text-xs text-red-500 font-black tracking-wide animate-pulse">⚠️ PIN Salah! Coba lagi.</p>
+              )}
+
+              {/* Numpad CFO */}
+              <div className="grid grid-cols-3 gap-3.5 w-full max-w-[280px]">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+                  <button 
+                    key={num}
+                    onClick={() => handleVerifyCFOPin(num.toString())}
+                    className="h-14 bg-white border-2 border-slate-100 hover:border-violet-500 hover:bg-violet-50 rounded-2xl text-lg font-black text-slate-800 transition active:scale-95 shadow-sm"
+                  >
+                    {num}
+                  </button>
+                ))}
+                <button 
+                  onClick={() => setPinInput('')}
+                  className="h-14 text-xs font-black text-red-500 hover:text-red-700 transition active:scale-95"
+                >
+                  CLEAR
+                </button>
+                <button 
+                  onClick={() => handleVerifyCFOPin('0')}
+                  className="h-14 bg-white border-2 border-slate-100 hover:border-violet-500 hover:bg-violet-50 rounded-2xl text-lg font-black text-slate-800 transition active:scale-95 shadow-sm"
+                >
+                  0
+                </button>
+                <button 
+                  onClick={() => setPinInput(pinInput.substring(0, pinInput.length - 1))}
+                  className="h-14 text-slate-500 hover:text-slate-800 flex items-center justify-center transition active:scale-95"
+                >
+                  <Delete size={20} />
+                </button>
+              </div>
+            </div>
+
+            <div className="text-center text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
+              Protected by Nimak Security Gate
+            </div>
           </div>
         )}
 
@@ -637,7 +721,7 @@ export default function App() {
                 </div>
                 <div>
                   <h4 className="font-black text-xs text-slate-800 leading-tight">{currentUser?.name}</h4>
-                  <p className="text-[9px] text-violet-600 font-extrabold uppercase tracking-wider mt-0.5">{currentUser?.division || 'IT'} Team</p>
+                  <p className="text-[8px] text-violet-600 font-bold">Nimak Adventurer</p>
                 </div>
               </div>
               <button onClick={handleLogout} className="w-8 h-8 bg-red-50 text-red-500 hover:bg-red-100 rounded-full flex items-center justify-center transition active:scale-95"><LogOut size={14}/></button>
@@ -886,10 +970,10 @@ export default function App() {
                 <button onClick={() => { setCurrentScreen('user_dashboard'); setUserTab('explore'); }} className="text-[9px] font-bold bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg text-slate-200 transition">Ke User Mode</button>
               </div>
               
-              {/* TOP TABS: Rekap Order vs Kelola Data */}
+              {/* TOP TABS: Rekap Order, Buku Kas, Kelola Master */}
               <div className="flex bg-slate-800 p-1 rounded-xl">
                 <button onClick={() => setCfoMainTab('rekap')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all ${cfoMainTab === 'rekap' ? 'bg-violet-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}>📊 Rekap Order</button>
-                <button onClick={() => setCfoMainTab('users')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all ${cfoMainTab === 'users' ? 'bg-violet-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}>👥 Tagihan Karyawan</button>
+                <button onClick={() => setCfoMainTab('users')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all ${cfoMainTab === 'users' ? 'bg-violet-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}>👥 Buku Tagihan</button>
                 <button onClick={() => setCfoMainTab('kelola')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all ${cfoMainTab === 'kelola' ? 'bg-violet-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}>🛠️ Master Data</button>
               </div>
             </div>
@@ -944,7 +1028,6 @@ export default function App() {
                       <div className="flex justify-between font-bold border-b border-slate-100 pb-2">
                         <div>
                           <span className="text-slate-900">{o.userName}</span>
-                          <span className="text-[9px] text-slate-400 font-bold block">Divisi: {o.division || 'IT'}</span>
                         </div>
                         <span className="text-violet-600 font-black">{formatRp(o.total)}</span>
                       </div>
@@ -1036,7 +1119,7 @@ export default function App() {
                           <div key={u.id} className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex justify-between items-center">
                             <div>
                               <h4 className="font-black text-xs text-slate-800">{u.name}</h4>
-                              <p className="text-[9px] text-slate-400 font-bold">Divisi: {u.division} • {u.phone}</p>
+                              <p className="text-[9px] text-slate-400 font-bold">{u.phone}</p>
                             </div>
                             <div className="text-right">
                               <span className="text-[8px] text-slate-400 font-black block uppercase">SISA TAGIHAN</span>
@@ -1109,7 +1192,7 @@ export default function App() {
                                 <input type="text" value={editingResto.tag} onChange={e=>setEditingResto({...editingResto, tag: e.target.value})} className="w-1/2 text-[10px] p-2 rounded-lg border outline-none" placeholder="Tag"/>
                               </div>
                               <div className="flex items-center gap-2">
-                                <input type="file" accept="image/*" ref={editFileInputRef} className="hidden" />
+                                <input type="file" accept="image/*" ref={editFileInputRef} onChange={(e) => handleImageChange(e, true)} className="hidden" />
                                 <button onClick={() => editFileInputRef.current.click()} className="text-[9px] font-bold bg-white border px-2 py-1.5 rounded-lg flex items-center gap-1"><Upload size={10}/> Ganti Foto</button>
                                 <div className="flex-1 flex gap-1 justify-end">
                                   <button onClick={submitEditResto} className="bg-indigo-600 text-white text-[9px] font-bold px-3 py-1.5 rounded-lg">Simpan</button>
