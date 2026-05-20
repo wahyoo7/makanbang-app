@@ -7,16 +7,15 @@ import {
   MapPin, Navigation, Compass, Award,
   Flame, Bell, History, Trophy, ArrowLeft,
   Image as ImageIcon, Trash2, Upload, Edit, X,
-  Shield // <-- INI DIA TERSANGKANYA! Ikon ini sudah saya tambahkan agar tidak blank
+  Shield
 } from 'lucide-react';
 
 // --- INTEGRASI CORE CLOUD DATABASE ---
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, doc, setDoc, collection, onSnapshot, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 
 // ============================================================================
-// ⚙️ FIREBASE CONFIGURATION (KREDENSIAL ASLI NIMAK)
+// ⚙️ FIREBASE CONFIGURATION (KREDENSIAL ASLI NIMAK - DIJAMIN AMAN)
 // ============================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyA4WWxScF_k7CeXYJWXPBQCU_z4E50oCA4",
@@ -27,15 +26,10 @@ const firebaseConfig = {
   appId: "1:958561448423:web:afae6cb869ba9d2d408d42"
 };
 
-const isFirebaseReady = true; 
+// Inisialisasi Firestore Secara Langsung (Tanpa Hambatan Gate Auth)
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'nimak-bfe56-app';
-
-let app, auth, db;
-if (isFirebaseReady) {
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
-}
 
 // --- SEED DATA CADANGAN ---
 const initialRestaurants = [
@@ -93,7 +87,6 @@ export default function App() {
   const [adminViewTab, setAdminViewTab] = useState('orang');
   
   const [currentUser, setCurrentUser] = useState(null);
-  const [userAuth, setUserAuth] = useState(null); 
   
   const [restaurants, setRestaurants] = useState([]);
   const [menus, setMenus] = useState([]);
@@ -122,24 +115,8 @@ export default function App() {
     rejectMessage: 'Waduh petualangan kuliner hari ini sudah ditutup! 😭 Hubungi CFO jika darurat!'
   });
 
-  // --- LOGIN OTOMATIS FIREBASE ---
+  // --- 📡 SINKRONISASI DATABASE LANGSUNG TANPA AUTH GATE ---
   useEffect(() => {
-    if (!isFirebaseReady) return;
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
-        else await signInAnonymously(auth);
-      } catch (err) { console.warn("Offline Mode: Anonymous Auth Disabled di Firebase"); }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (user) => { if(user) setUserAuth(user); });
-    return () => unsubscribe();
-  }, []);
-
-  // --- SINKRONISASI DATABASE REALTIME ---
-  useEffect(() => {
-    if (!userAuth) return; 
-
     const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current');
     const ordersRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
     const restosRef = collection(db, 'artifacts', appId, 'public', 'data', 'restaurants');
@@ -168,25 +145,17 @@ export default function App() {
     });
 
     return () => { unsubSession(); unsubOrders(); unsubRestos(); unsubMenus(); };
-  }, [userAuth]);
-
+  }, []);
 
   // ==========================================
-  // FUNGSI CFO KELOLA DATA MASTER (PRD Compliant)
+  // FUNGSI CFO KELOLA DATA MASTER
   // ==========================================
-  
-  // 1. Toggle Resto Buka/Tutup Hari ini
   const handleToggleRestoActiveToday = async (restoId) => {
     let currentActive = session.openRestoIds || [];
-    let newActive = currentActive.includes(restoId) 
-      ? currentActive.filter(id => id !== restoId) 
-      : [...currentActive, restoId];
-    
+    let newActive = currentActive.includes(restoId) ? currentActive.filter(id => id !== restoId) : [...currentActive, restoId];
     const updated = { ...session, openRestoIds: newActive };
     setSession(updated);
-    if (userAuth) {
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current'), updated);
-    }
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current'), updated);
   };
 
   const handleImageChange = async (e, isEdit = false) => {
@@ -199,74 +168,57 @@ export default function App() {
     setIsCompressing(false);
   };
 
-  // 2. Tambah & Edit Resto
   const handleAddResto = async () => {
     if (!newResto.name || !newResto.category) return alert("Nama dan Kategori wajib diisi!");
     const finalResto = { ...newResto, rating: 5.0, reviews: 0, image: newResto.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80' };
     
     try {
-      if(userAuth) {
-        const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'restaurants'), finalResto);
-        const updatedSession = { ...session, openRestoIds: [...(session.openRestoIds || []), docRef.id] };
-        setSession(updatedSession);
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current'), updatedSession);
-      }
+      const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'restaurants'), finalResto);
+      const updatedSession = { ...session, openRestoIds: [...(session.openRestoIds || []), docRef.id] };
+      setSession(updatedSession);
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current'), updatedSession);
     } catch (error) {
       console.error(error);
-      alert("Gagal menambahkan restoran.");
     }
-    
     setNewResto({ name: '', category: '', tag: '', distance: 'Kantor', time: '15 mnt', image: '' });
   };
 
   const submitEditResto = async () => {
     if (!editingResto.name || !editingResto.category) return alert("Nama dan Kategori wajib diisi!");
-    if(userAuth) {
-      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'restaurants', editingResto.id);
-      await updateDoc(ref, {
-        name: editingResto.name, category: editingResto.category, 
-        tag: editingResto.tag, image: editingResto.image
-      });
-    }
+    const ref = doc(db, 'artifacts', appId, 'public', 'data', 'restaurants', editingResto.id);
+    await updateDoc(ref, { name: editingResto.name, category: editingResto.category, tag: editingResto.tag, image: editingResto.image });
     setEditingResto(null);
   };
 
   const handleDeleteResto = async (id) => {
     if(window.confirm("Yakin ingin menghapus resto ini? Data tidak bisa kembali.")) {
-      if(userAuth) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'restaurants', id));
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'restaurants', id));
     }
   };
 
-  // 3. Tambah & Edit Menu
   const handleAddMenu = async (restoId) => {
     if (!newMenu.name || !newMenu.price) return alert("Nama dan Harga wajib diisi!");
-    if(userAuth) {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'menus'), {
-        restaurant_id: restoId, name: newMenu.name, price: Number(newMenu.price), desc: newMenu.desc, tag: newMenu.tag, popular: false
-      });
-    }
+    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'menus'), {
+      restaurant_id: restoId, name: newMenu.name, price: Number(newMenu.price), desc: newMenu.desc, tag: newMenu.tag, popular: false
+    });
     setNewMenu({ name: '', price: '', desc: '', tag: '' });
     setActiveAddMenuRestoId(null);
   };
 
   const submitEditMenu = async () => {
     if (!editingMenu.name || !editingMenu.price) return alert("Nama dan Harga wajib diisi!");
-    if(userAuth) {
-      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'menus', editingMenu.id);
-      await updateDoc(ref, {
-        name: editingMenu.name, price: Number(editingMenu.price), desc: editingMenu.desc, tag: editingMenu.tag
-      });
-    }
+    const ref = doc(db, 'artifacts', appId, 'public', 'data', 'menus', editingMenu.id);
+    await updateDoc(ref, { name: editingMenu.name, price: Number(editingMenu.price), desc: editingMenu.desc, tag: editingMenu.tag });
     setEditingMenu(null);
   };
 
   const handleDeleteMenu = async (id) => {
     if(window.confirm("Hapus menu ini?")) {
-      if(userAuth) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'menus', id));
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'menus', id));
     }
   };
 
-  // --- FUNGSI USER GENERAL ---
+  // --- GENERAL APP FLOW ---
   const handleStartAdventure = () => setCurrentScreen('login');
   const handleLogin = (name, phone) => {
     const role = phone === '0000' ? 'admin' : 'user';
@@ -292,32 +244,27 @@ export default function App() {
     const newOrder = {
       userName: currentUser?.name || 'User', items: cart, total: cartTotal, date: 'Hari Ini', status: 'Menunggu Pembayaran', timestamp: Date.now()
     };
-    if (userAuth) {
-      try { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'orders'), newOrder); } 
-      catch (error) { console.error("Gagal kirim pesanan:", error); }
-    } else {
-      setOrders([...orders, { id: Date.now().toString(), ...newOrder }]);
-    }
+    try { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'orders'), newOrder); } 
+    catch (error) { console.error(error); }
     setCart([]); setCurrentScreen('user_dashboard'); setUserTab('my_orders');
   };
 
   const handleUpdateOrderStatus = async (orderId, newStatus) => {
-    if (userAuth) await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId), { status: newStatus });
-    else setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId), { status: newStatus });
   };
 
   const handleToggleLapak = async () => {
     const updated = { ...session, isOpen: !session.isOpen };
     setSession(updated);
-    if (userAuth) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current'), updated);
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current'), updated);
   };
 
   const cartTotal = cart.reduce((sum, item) => sum + ((item.price || 0) * (item.qty || 0)), 0);
   const cartItemsCount = cart.reduce((sum, item) => sum + (item.qty || 0), 0);
-  
   const openRestaurants = restaurants.filter(r => (session?.openRestoIds || []).includes(r.id)); 
   const filteredMenus = menus.filter(m => m.restaurant_id === selectedResto?.id);
 
+  // Sultan System Engine
   const dynamicBadges = useMemo(() => {
     const userStats = {};
     const todayOrders = orders.filter(o => o && o.date === 'Hari Ini');
@@ -387,11 +334,6 @@ export default function App() {
     <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-4 font-sans selection:bg-indigo-500 selection:text-white">
       <div className="w-full max-w-[410px] bg-[#F7F8FC] h-[820px] flex flex-col relative shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-[48px] border-[10px] border-slate-950 overflow-hidden">
         
-        {/* Notch */}
-        <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-6 bg-slate-950 rounded-b-2xl z-50 flex items-center justify-center">
-          <div className="w-12 h-1.5 bg-slate-800 rounded-full"></div>
-        </div>
-
         {/* SCREEN 1: ONBOARDING */}
         {currentScreen === 'onboarding' && (
           <div className="flex-1 flex flex-col justify-between p-8 pt-16 bg-gradient-to-b from-[#E2E6FF] via-[#EAEFFF] to-[#F5F8FF]">
@@ -408,7 +350,7 @@ export default function App() {
               </button>
               <div className="flex justify-between items-center px-2 mt-4">
                 <span className="text-xs text-slate-400 font-semibold cursor-pointer hover:text-indigo-600" onClick={() => handleLogin('Admin CFO', '0000')}>Masuk CFO (Admin)</span>
-                <span className="text-[10px] text-slate-400 font-bold bg-slate-200 px-2 py-0.5 rounded-full">Nimak v3.6</span>
+                <span className="text-[10px] text-slate-400 font-bold bg-slate-200 px-2 py-0.5 rounded-full">Nimak v3.7</span>
               </div>
             </div>
           </div>
@@ -539,7 +481,6 @@ export default function App() {
               <button onClick={() => setUserTab('explore')} className={`flex flex-col items-center text-[8px] font-bold transition ${userTab === 'explore' ? 'text-amber-400 scale-110' : 'hover:text-white'}`}><Compass size={16}/>EXPLORE</button>
               <button onClick={() => setUserTab('my_orders')} className={`flex flex-col items-center text-[8px] font-bold transition ${userTab === 'my_orders' ? 'text-amber-400 scale-110' : 'hover:text-white'}`}><Receipt size={16}/>TIKET SAYA</button>
               <button onClick={() => setUserTab('leaderboard')} className={`flex flex-col items-center text-[8px] font-bold transition ${userTab === 'leaderboard' ? 'text-amber-400 scale-110' : 'hover:text-white'}`}><Trophy size={16}/>SULTAN</button>
-              {/* KUNCI KEAMANAN: HANYA MUNCUL UNTUK ADMIN */}
               {currentUser?.role === 'admin' && (
                 <button onClick={() => setCurrentScreen('admin_dashboard')} className="flex flex-col items-center text-[8px] font-bold hover:text-white transition"><Store size={16}/>CFO PANEL</button>
               )}
@@ -566,7 +507,7 @@ export default function App() {
                       <p className="text-[9px] text-slate-400 line-clamp-2 leading-relaxed">{menu.desc}</p>
                       <p className="text-indigo-600 font-black mt-1.5">{formatRp(menu.price)}</p>
                     </div>
-                    {qty === 0 ? <button onClick={() => handleUpdateCart(menu, 1)} className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold px-3 py-1.5 rounded-xl shrink-0 transition">Pilih</button> :
+                    {qty === 0 ? <button onClick={() => handleUpdateCart(menu, 1)} className="bg-indigo-50 text-indigo-600 font-bold px-3 py-1.5 rounded-xl shrink-0 transition">Pilih</button> :
                     <div className="flex items-center gap-2 bg-slate-50 border p-1 rounded-xl shrink-0"><button onClick={() => handleUpdateCart(menu, -1)} className="font-bold px-2 py-1 text-slate-600 hover:bg-white rounded">-</button><span className="font-bold w-3 text-center">{qty}</span><button onClick={() => handleUpdateCart(menu, 1)} className="font-bold px-2 py-1 text-slate-600 hover:bg-white rounded">+</button></div>}
                   </div>
                 );
@@ -575,13 +516,13 @@ export default function App() {
             {cartItemsCount > 0 && (
               <div className="absolute bottom-0 left-0 right-0 bg-white border-t p-4 rounded-t-[32px] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] flex justify-between items-center z-40">
                 <div><span className="text-[9px] text-slate-400 block font-bold">TOTAL BAYAR</span><span className="text-base font-black text-indigo-600">{formatRp(cartTotal)}</span></div>
-                <button onClick={handleCheckout} className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3.5 px-6 rounded-2xl text-xs shadow-lg shadow-indigo-500/30 active:scale-95 transition flex items-center gap-2">Konfirmasi <Check size={14}/></button>
+                <button onClick={handleCheckout} className="bg-indigo-600 text-white font-extrabold py-3 px-6 rounded-2xl text-xs shadow-lg shadow-indigo-500/30 active:scale-95 transition flex items-center gap-2">Konfirmasi <Check size={14}/></button>
               </div>
             )}
           </div>
         )}
 
-        {/* SCREEN 5: CFO ADMIN PANEL (SANGAT COMPLIANT DENGAN PRD) */}
+        {/* SCREEN 5: CFO ADMIN PANEL */}
         {currentScreen === 'admin_dashboard' && (
           <div className="flex-1 flex flex-col bg-[#F7F8FC] pt-12">
             <div className="bg-slate-900 text-white p-4 flex flex-col gap-3 shrink-0 shadow-md z-10">
@@ -590,7 +531,6 @@ export default function App() {
                 <button onClick={() => { setCurrentScreen('user_dashboard'); setUserTab('explore'); }} className="text-[9px] font-bold bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg text-slate-200 transition">Ke User Mode</button>
               </div>
               
-              {/* TOP TABS: Rekap Order vs Kelola Data */}
               <div className="flex bg-slate-800 p-1 rounded-xl">
                 <button onClick={() => setCfoMainTab('rekap')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all ${cfoMainTab === 'rekap' ? 'bg-indigo-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}>📊 Rekap Order</button>
                 <button onClick={() => setCfoMainTab('kelola')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all ${cfoMainTab === 'kelola' ? 'bg-indigo-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}>🛠️ Master Data</button>
@@ -599,7 +539,6 @@ export default function App() {
             
             <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-20">
               
-              {/* --- TAB: REKAP ORDER --- */}
               {cfoMainTab === 'rekap' && (
                 <>
                   <div className="flex justify-between items-center p-3.5 bg-white border border-indigo-100 rounded-2xl shadow-sm">
@@ -641,10 +580,8 @@ export default function App() {
                 </>
               )}
 
-              {/* --- TAB: KELOLA MASTER DATA (SESUAI PRD: BISA EDIT & TOGGLE OPEN) --- */}
               {cfoMainTab === 'kelola' && (
                 <div className="space-y-6">
-                  {/* Form Tambah Resto */}
                   <div className="bg-white p-4 rounded-2xl border shadow-sm space-y-3">
                     <h3 className="text-xs font-black text-slate-800 border-b pb-2">➕ Tambah Restoran Master</h3>
                     <div className="space-y-2">
@@ -654,7 +591,7 @@ export default function App() {
                         <input type="text" placeholder="Tag (Opsional)" value={newResto.tag} onChange={e => setNewResto({...newResto, tag: e.target.value})} className="w-1/3 bg-slate-50 border p-2.5 rounded-xl text-[10px] focus:border-indigo-500 outline-none transition" />
                       </div>
                       <div className="flex items-center gap-2 mt-2">
-                        <input type="file" accept="image/*" ref={fileInputRef} onChange={handleImageChange} className="hidden" />
+                        <input type="file" accept="image/*" ref={fileInputRef} onChange={(e) => handleImageChange(e, false)} className="hidden" />
                         <button onClick={() => fileInputRef.current.click()} className="flex-1 bg-slate-50 hover:bg-slate-100 border border-slate-300 border-dashed text-slate-600 font-semibold p-2.5 rounded-xl text-[10px] flex items-center justify-center gap-2 transition">
                           {isCompressing ? <span className="animate-pulse">⏳ Mengompresi...</span> : <><Upload size={14}/> {newResto.image ? 'Foto Siap!' : 'Upload Foto'}</>}
                         </button>
@@ -664,7 +601,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* List Resto & Menu dengan Fitur Edit & Toggle Buka */}
                   <div className="space-y-4">
                     <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5"><List size={14}/> Database Restoran & Menu</h3>
                     {restaurants.map(resto => {
@@ -673,7 +609,6 @@ export default function App() {
 
                       return (
                       <div key={resto.id} className={`bg-white rounded-2xl border overflow-hidden transition-all ${isRestoOpenToday ? 'shadow-md border-indigo-200' : 'opacity-70 shadow-sm'}`}>
-                        {/* Resto Header Item */}
                         <div className="p-3 border-b bg-slate-50 flex flex-col gap-2">
                           <div className="flex items-center gap-3">
                             <img src={resto.image || 'https://via.placeholder.com/100'} className="w-12 h-12 rounded-xl object-cover border shadow-sm" />
@@ -682,25 +617,23 @@ export default function App() {
                               <p className="text-[9px] text-slate-500 font-medium">{resto.category}</p>
                             </div>
                             
-                            {/* ACTION BUTTONS: Toggle Open, Edit, Delete */}
                             <div className="flex flex-col items-end gap-1.5">
-                              <div onClick={() => handleToggleRestoActiveToday(resto.id)} className={`w-10 h-5 flex items-center rounded-full p-0.5 cursor-pointer transition duration-300 ${isRestoOpenToday ? 'bg-emerald-500' : 'bg-slate-300'}`} title="Buka/Tutup Resto ini untuk hari ini">
+                              <div onClick={() => handleToggleRestoActiveToday(resto.id)} className={`w-10 h-5 flex items-center rounded-full p-0.5 cursor-pointer transition duration-300 ${isRestoOpenToday ? 'bg-emerald-500' : 'bg-slate-300'}`}>
                                 <div className={`bg-white w-4 h-4 rounded-full shadow-sm transform transition duration-300 ${isRestoOpenToday ? 'translate-x-5' : ''}`}></div>
                               </div>
                               <div className="flex gap-1">
-                                <button onClick={() => setEditingResto(resto)} className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition" title="Edit Resto"><Edit size={12}/></button>
-                                <button onClick={() => handleDeleteResto(resto.id)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition" title="Hapus Resto"><Trash2 size={12}/></button>
+                                <button onClick={() => setEditingResto(resto)} className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition"><Edit size={12}/></button>
+                                <button onClick={() => handleDeleteResto(resto.id)} className="p-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition"><Trash2 size={12}/></button>
                               </div>
                             </div>
                           </div>
 
-                          {/* INLINE EDIT FORM RESTO */}
                           {isEditingThisResto && (
                             <div className="mt-2 p-3 bg-indigo-50/50 rounded-xl border border-indigo-100 border-dashed space-y-2">
-                              <input type="text" value={editingResto.name} onChange={e=>setEditingResto({...editingResto, name: e.target.value})} className="w-full text-xs p-2 rounded-lg border outline-none focus:border-indigo-400" placeholder="Nama Resto"/>
+                              <input type="text" value={editingResto.name} onChange={e=>setEditingResto({...editingResto, name: e.target.value})} className="w-full text-xs p-2 rounded-lg border outline-none" placeholder="Nama Resto"/>
                               <div className="flex gap-2">
-                                <input type="text" value={editingResto.category} onChange={e=>setEditingResto({...editingResto, category: e.target.value})} className="w-1/2 text-[10px] p-2 rounded-lg border outline-none focus:border-indigo-400" placeholder="Kategori"/>
-                                <input type="text" value={editingResto.tag} onChange={e=>setEditingResto({...editingResto, tag: e.target.value})} className="w-1/2 text-[10px] p-2 rounded-lg border outline-none focus:border-indigo-400" placeholder="Tag"/>
+                                <input type="text" value={editingResto.category} onChange={e=>setEditingResto({...editingResto, category: e.target.value})} className="w-1/2 text-[10px] p-2 rounded-lg border outline-none" placeholder="Kategori"/>
+                                <input type="text" value={editingResto.tag} onChange={e=>setEditingResto({...editingResto, tag: e.target.value})} className="w-1/2 text-[10px] p-2 rounded-lg border outline-none" placeholder="Tag"/>
                               </div>
                               <div className="flex items-center gap-2">
                                 <input type="file" accept="image/*" ref={editFileInputRef} onChange={(e) => handleImageChange(e, true)} className="hidden" />
@@ -714,7 +647,6 @@ export default function App() {
                           )}
                         </div>
 
-                        {/* List Menu & Edit Menu */}
                         <div className="p-3 space-y-2 bg-white">
                           {menus.filter(m => m.restaurant_id === resto.id).map(menu => {
                             const isEditingThisMenu = editingMenu?.id === menu.id;
@@ -732,7 +664,6 @@ export default function App() {
                                   </div>
                                 </div>
                               ) : (
-                                /* INLINE EDIT FORM MENU */
                                 <div className="bg-slate-50 p-2 rounded-lg space-y-1.5 border border-indigo-100">
                                   <input type="text" value={editingMenu.name} onChange={e=>setEditingMenu({...editingMenu, name: e.target.value})} className="w-full text-[10px] p-1.5 rounded border outline-none" placeholder="Nama Menu"/>
                                   <div className="flex gap-1.5">
@@ -749,7 +680,6 @@ export default function App() {
                             );
                           })}
                           
-                          {/* Form Tambah Menu Baru */}
                           {activeAddMenuRestoId === resto.id ? (
                             <div className="bg-slate-50 p-2.5 rounded-xl space-y-2 mt-2 border border-slate-200">
                               <input type="text" placeholder="Nama Menu Baru..." value={newMenu.name} onChange={e => setNewMenu({...newMenu, name: e.target.value})} className="w-full p-2 text-[10px] rounded-lg outline-none border focus:border-indigo-400" />
@@ -776,7 +706,6 @@ export default function App() {
               )}
             </div>
             
-            {/* Bottom Nav CFO */}
             <div className="bg-white p-3 border-t shadow-[0_-5px_15px_rgba(0,0,0,0.05)] z-20">
               <button onClick={handleLogout} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 rounded-xl text-xs flex items-center justify-center gap-1.5 transition"><LogOut size={14}/>Keluar Sesi CFO</button>
             </div>
