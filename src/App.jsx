@@ -7,12 +7,12 @@ import {
   MapPin, Navigation, Compass, Award,
   Flame, Bell, History, Trophy, ArrowLeft,
   Image as ImageIcon, Trash2, Upload, Edit, X,
-  Shield
+  Shield, CheckCircle, CreditCard, Coins, UserCheck, Users
 } from 'lucide-react';
 
 // --- INTEGRASI CORE CLOUD DATABASE ---
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, setDoc, collection, onSnapshot, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 
 // ============================================================================
 // ⚙️ FIREBASE CONFIGURATION (KREDENSIAL ASLI NIMAK)
@@ -49,7 +49,7 @@ const initialMenus = [
 ];
 
 const initialOrders = [
-  { id: "mock1", userName: "Mbak Sarah (Finance)", total: 39000, date: 'Hari Ini', items: [{ menuId: "menu1", name: 'Nasi Telur Dadar + Orek Tempe', price: 15000, qty: 1, notes: "" }, { menuId: "menu4", name: 'Paket Geprek Lava Mozzarella', price: 25000, qty: 1, notes: "" }], status: 'Selesai', timestamp: Date.now() }
+  { id: "mock1", userName: "Mbak Sarah (Finance)", total: 39000, date: 'Hari Ini', items: [{ menuId: "menu1", name: 'Nasi Telur Dadar + Orek Tempe', price: 15000, qty: 1, notes: "" }, { menuId: "menu4", name: 'Paket Geprek Lava Mozzarella', price: 25000, qty: 1, notes: "" }], status: 'Selesai', timestamp: Date.now(), paymentMethod: 'cash', cashAmount: 50000, cfoReceivedAmount: 50000, cfoAdminNotes: "Lunas pas" }
 ];
 
 const formatRp = (num) => {
@@ -87,6 +87,7 @@ export default function App() {
   const [adminViewTab, setAdminViewTab] = useState('orang');
   
   const [currentUser, setCurrentUser] = useState(null);
+  const [usersList, setUsersList] = useState([]); // Master akun karyawan terdaftar
   
   const [restaurants, setRestaurants] = useState([]);
   const [menus, setMenus] = useState([]);
@@ -106,21 +107,36 @@ export default function App() {
 
   const fileInputRef = useRef(null);
   const editFileInputRef = useRef(null);
+
+  // States checkout baru
+  const [paymentMethod, setPaymentMethod] = useState('transfer'); // 'transfer' | 'cash'
+  const [cashAmountInput, setCashAmountInput] = useState('');
+  const [orderNotes, setOrderNotes] = useState('');
+
+  // States Registrasi Baru
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [regForm, setRegForm] = useState({ name: '', phone: '', division: 'IT' });
+
+  // States Rekonsiliasi CFO
+  const [reconcileAmounts, setReconcileAmounts] = useState({});
+  const [reconcileNotes, setReconcileNotes] = useState({});
   
   const [session, setSession] = useState({
     isOpen: true,
     openRestoIds: ["resto1", "resto2", "resto3"],
     endTime: '11:45',
     bankAccount: 'BCA 872-019-2831 a.n Joko Susilo (CFO)',
-    rejectMessage: 'Waduh petualangan kuliner hari ini sudah ditutup! 😭 Hubungi CFO jika darurat!'
+    rejectMessage: 'Waduh petualangan kuliner hari ini sudah ditutup! 😭 Hubungi CFO jika darurat!',
+    allowTransfer: true // Toggle dinamis cash-only vs allow transfer
   });
 
-  // --- 📡 SINKRONISASI DATABASE REALTIME INSTAN (Direct Connection) ---
+  // --- 📡 SINKRONISASI DATABASE REALTIME INSTAN ---
   useEffect(() => {
     const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current');
     const ordersRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
     const restosRef = collection(db, 'artifacts', appId, 'public', 'data', 'restaurants');
     const menusRef = collection(db, 'artifacts', appId, 'public', 'data', 'menus');
+    const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
 
     const unsubSession = onSnapshot(sessionRef, (snap) => {
       if (snap.exists()) setSession(snap.data());
@@ -148,8 +164,21 @@ export default function App() {
       }
     });
 
-    return () => { unsubSession(); unsubOrders(); unsubRestos(); unsubMenus(); };
+    const unsubUsers = onSnapshot(usersRef, (snap) => {
+      const list = []; snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+      setUsersList(list);
+    });
+
+    return () => { unsubSession(); unsubOrders(); unsubRestos(); unsubMenus(); unsubUsers(); };
   }, []);
+
+  // Set default payment method based on CFO configuration
+  useEffect(() => {
+    if (!session.allowTransfer) {
+      setPaymentMethod('cash');
+    }
+  }, [session]);
+
 
   // ==========================================
   // FUNGSI CFO KELOLA DATA MASTER
@@ -174,7 +203,7 @@ export default function App() {
 
   const handleAddResto = async () => {
     if (!newResto.name || !newResto.category) return alert("Nama dan Kategori wajib diisi!");
-    const finalResto = { ...newResto, rating: 5.0, reviews: 0, image: newResto.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80' };
+    const finalResto = { ...newResto, rating: 5.0, reviews: 0, image: newResto.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80' };
     
     try {
       const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'restaurants'), finalResto);
@@ -224,11 +253,50 @@ export default function App() {
 
   // --- GENERAL USER FLOW ---
   const handleStartAdventure = () => setCurrentScreen('login');
-  const handleLogin = (name, phone) => {
-    const role = phone === '0000' ? 'admin' : 'user';
-    setCurrentUser({ name, phone, role });
-    setCurrentScreen(role === 'admin' ? 'admin_dashboard' : 'user_dashboard');
+  
+  const handleLogin = async (phoneOrId) => {
+    if (!phoneOrId) return alert("Masukkan Nomor Handphone atau ID!");
+    
+    // Pintu Akses Admin CFO
+    if (phoneOrId === '0000') {
+      setCurrentUser({ name: 'Chief Food Officer (CFO)', phone: '0000', role: 'admin', division: 'CFO Office' });
+      setCurrentScreen('admin_dashboard');
+      return;
+    }
+
+    // Cari di daftar karyawan terdaftar
+    const matchedUser = usersList.find(u => u.phone === phoneOrId || u.name.toLowerCase() === phoneOrId.toLowerCase());
+    
+    if (matchedUser) {
+      setCurrentUser({ ...matchedUser, role: 'user' });
+      setCurrentScreen('user_dashboard');
+    } else {
+      // Tawarkan Registrasi Resmi
+      setRegForm({ name: '', phone: phoneOrId, division: 'IT' });
+      setIsRegistering(true);
+    }
   };
+
+  const handleRegisterEmployee = async () => {
+    if (!regForm.name || !regForm.phone) return alert("Harap lengkapi formulir registrasi!");
+    
+    try {
+      const newUserDoc = {
+        name: regForm.name,
+        phone: regForm.phone,
+        division: regForm.division,
+        timestamp: Date.now()
+      };
+      const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'users'), newUserDoc);
+      setCurrentUser({ id: docRef.id, ...newUserDoc, role: 'user' });
+      setIsRegistering(false);
+      setCurrentScreen('user_dashboard');
+    } catch (e) {
+      console.error(e);
+      alert("Registrasi Gagal, coba lagi.");
+    }
+  };
+
   const handleLogout = () => { setCurrentUser(null); setCart([]); setCurrentScreen('onboarding'); };
   const viewRestoDetail = (resto) => { setSelectedResto(resto); setCurrentScreen('restaurant_detail'); };
 
@@ -245,22 +313,78 @@ export default function App() {
   const handleUpdateNotes = (menuId, notes) => setCart(prev => prev.map(item => item.menuId === menuId ? { ...item, notes } : item));
 
   const handleCheckout = async () => {
+    const cashHanded = Number(cashAmountInput);
+    if (paymentMethod === 'cash') {
+      if (!cashAmountInput || isNaN(cashHanded) || cashHanded < cartTotal) {
+        return alert(`Nominal uang cash fisik wajib diisi & minimal ${formatRp(cartTotal)}!`);
+      }
+    }
+
     const newOrder = {
-      userName: currentUser?.name || 'User', items: cart, total: cartTotal, date: 'Hari Ini', status: 'Menunggu Pembayaran', timestamp: Date.now()
+      userName: currentUser?.name || 'User',
+      division: currentUser?.division || 'IT',
+      items: cart,
+      total: cartTotal,
+      date: 'Hari Ini',
+      status: 'Menunggu Pembayaran',
+      paymentMethod: paymentMethod,
+      cashAmount: paymentMethod === 'cash' ? cashHanded : 0,
+      notes: orderNotes,
+      timestamp: Date.now(),
+      cfoReceivedAmount: 0,
+      cfoAdminNotes: ""
     };
-    try { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'orders'), newOrder); } 
-    catch (error) { console.error(error); }
-    setCart([]); setCurrentScreen('user_dashboard'); setUserTab('my_orders');
+
+    try { 
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'orders'), newOrder); 
+    } catch (error) { 
+      console.error(error); 
+    }
+    
+    setCart([]); 
+    setCashAmountInput('');
+    setOrderNotes('');
+    setCurrentScreen('user_dashboard'); 
+    setUserTab('my_orders');
   };
 
   const handleUpdateOrderStatus = async (orderId, newStatus) => {
     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId), { status: newStatus });
   };
 
+  const handleReconcileOrder = async (orderId) => {
+    const recAmt = Number(reconcileAmounts[orderId]) || 0;
+    const recNote = reconcileNotes[orderId] || "";
+    
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId), {
+        cfoReceivedAmount: recAmt,
+        cfoAdminNotes: recNote
+      });
+      alert("Rekonsiliasi Keuangan Disimpan! 🎉");
+    } catch (e) {
+      console.error(e);
+      alert("Gagal menyimpan rekonsiliasi.");
+    }
+  };
+
   const handleToggleLapak = async () => {
     const updated = { ...session, isOpen: !session.isOpen };
     setSession(updated);
     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current'), updated);
+  };
+
+  const handleToggleAllowTransfer = async () => {
+    const updated = { ...session, allowTransfer: !session.allowTransfer };
+    setSession(updated);
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current'), updated);
+  };
+
+  const handleSaveBankAccount = async (newAcc) => {
+    const updated = { ...session, bankAccount: newAcc };
+    setSession(updated);
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current'), updated);
+    alert("Informasi Rekening Berhasil Diperbarui!");
   };
 
   const cartTotal = cart.reduce((sum, item) => sum + ((item.price || 0) * (item.qty || 0)), 0);
@@ -334,94 +458,219 @@ export default function App() {
     return Object.values(map);
   }, [orders]);
 
-  return (
-    <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center font-sans selection:bg-indigo-500 selection:text-white">
+  // Kalkulasi total tagihan hutang per karyawan bulan ini
+  const userDebts = useMemo(() => {
+    const map = {};
+    orders.forEach(o => {
+      if (!o) return;
+      const uName = o.userName;
+      // Filter status selesai dan uang yang belum direkonsiliasi lunas penuh oleh CFO
+      const totalCost = Number(o.total) || 0;
+      const received = Number(o.cfoReceivedAmount) || 0;
+      const debt = Math.max(0, totalCost - received);
       
-      {/* Container Adaptif: Fullscreen di HP Karyawan, Card Elegan di Desktop */}
-      <div className="w-full sm:max-w-md h-[100dvh] sm:h-[85vh] sm:min-h-[780px] sm:max-h-[900px] bg-[#F7F8FC] flex flex-col relative sm:shadow-2xl sm:rounded-[36px] sm:border sm:border-slate-200/80 overflow-hidden transition-all duration-300">
+      map[uName] = (map[uName] || 0) + debt;
+    });
+    return map;
+  }, [orders]);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-tr from-violet-100 via-purple-50 to-amber-50 flex flex-col justify-center items-center font-sans p-0 sm:p-4 text-slate-800 antialiased">
+      
+      {/* Container Full Adaptif Tanpa Frame Bezel Palsu */}
+      <div className="w-full sm:max-w-md h-[100dvh] sm:h-[85vh] sm:min-h-[780px] sm:max-h-[920px] bg-white flex flex-col relative sm:shadow-[0_24px_70px_rgba(109,40,217,0.15)] sm:rounded-[40px] sm:border-8 sm:border-violet-600 overflow-hidden transition-all duration-300">
         
-        {/* SCREEN 1: ONBOARDING */}
+        {/* SCREEN 1: ONBOARDING (KidZo Theme) */}
         {currentScreen === 'onboarding' && (
-          <div className="flex-1 flex flex-col justify-between p-8 pt-12 bg-gradient-to-b from-[#E2E6FF] via-[#EAEFFF] to-[#F5F8FF]">
-            <span className="text-xs font-black text-indigo-600">09:40 WIB</span>
+          <div className="flex-1 flex flex-col justify-between p-8 pt-12 bg-gradient-to-b from-violet-100 via-white to-purple-50">
+            <div className="flex justify-between items-center shrink-0">
+              <span className="text-sm font-black text-violet-600 bg-white px-3.5 py-1.5 rounded-full shadow-sm border border-violet-100">⭐ Nimak</span>
+              <span className="text-[10px] text-violet-600 font-extrabold bg-violet-100 px-3 py-1 rounded-full uppercase tracking-wider">v3.9 PROD</span>
+            </div>
+
             <div className="text-center space-y-6 my-auto">
-              <div className="w-40 h-40 rounded-[36px] bg-indigo-100 flex items-center justify-center shadow-inner mx-auto">
-                <span className="text-7xl transform hover:scale-110 transition duration-300">🍱</span>
+              <div className="relative inline-block">
+                <div className="w-44 h-44 rounded-[44px] bg-gradient-to-tr from-violet-400 to-indigo-300 flex items-center justify-center shadow-[0_12px_30px_rgba(109,40,217,0.25)] mx-auto animate-pulse">
+                  <span className="text-8xl">🍱</span>
+                </div>
+                <div className="absolute -bottom-4 -right-4 bg-amber-400 text-slate-900 text-xs font-black px-4 py-2 rounded-2xl shadow-lg border-2 border-white transform rotate-12">
+                  YUMMY! 😋
+                </div>
               </div>
-              <h1 className="text-3xl font-black text-slate-800 leading-none">
-                Welcome to <br/>
-                <span className="text-indigo-600 bg-indigo-100 px-3 py-1 rounded-2xl inline-block mt-1">Nimak</span>
-              </h1>
-              <p className="text-xs text-slate-500 max-w-[240px] mx-auto">Sistem Petualangan Makan Siang Kantor Seru, Cepat, & Kompetitif.</p>
+
+              <div className="space-y-3">
+                <h1 className="text-4xl font-black text-slate-900 tracking-tight leading-none">
+                  Makan Siang <br/>
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-600 to-indigo-600">
+                    Satu Komando
+                  </span>
+                </h1>
+                <p className="text-xs text-slate-500 max-w-[280px] mx-auto leading-relaxed font-medium">
+                  Gabung misi kuliner harian kantor dengan asyik, raih rekor sultan, & bayar gampang tanpa drama!
+                </p>
+              </div>
             </div>
             
-            <div className="space-y-3">
-              <button onClick={handleStartAdventure} className="w-full bg-indigo-600 text-white font-extrabold py-4 rounded-2xl shadow-lg shadow-indigo-500/30 flex justify-between px-6 text-sm hover:bg-indigo-700 active:scale-95 transition">
-                <span>Mulai Petualangan</span><ChevronRight size={18}/>
+            <div className="space-y-4 shrink-0">
+              <button 
+                onClick={handleStartAdventure} 
+                className="w-full bg-violet-600 hover:bg-violet-700 active:scale-[0.98] transition duration-200 text-white font-black py-4.5 rounded-3xl shadow-[0_8px_25px_rgba(109,40,217,0.35)] flex justify-between items-center px-8 text-sm"
+              >
+                <span>Mulai Petualangan Makan</span>
+                <ChevronRight size={20} className="stroke-[3]" />
               </button>
-              <div className="flex justify-between items-center px-2 mt-4">
-                <span className="text-xs text-slate-400 font-semibold cursor-pointer hover:text-indigo-600" onClick={() => handleLogin('Admin CFO', '0000')}>Masuk CFO (Admin)</span>
-                <span className="text-[10px] text-slate-400 font-bold bg-slate-200 px-2 py-0.5 rounded-full">Nimak v3.8</span>
+              
+              <div className="flex justify-between items-center px-2">
+                <span 
+                  onClick={() => handleLogin('0000')} 
+                  className="text-xs font-bold text-violet-600 hover:text-violet-800 cursor-pointer underline underline-offset-4"
+                >
+                  CFO Portal (Admin)
+                </span>
+                <span className="text-[10px] text-slate-400 font-extrabold">BY CHIEF FOOD OFFICER</span>
               </div>
             </div>
           </div>
         )}
 
-        {/* SCREEN 2: LOGIN */}
+        {/* SCREEN 2: LOGIN & REGISTRASI TERPADU */}
         {currentScreen === 'login' && (
-          <div className="flex-1 flex flex-col justify-between p-8 pt-12 bg-gradient-to-b from-[#FFF5E6] via-white to-[#F7F8FC]">
-            <button onClick={() => setCurrentScreen('onboarding')} className="w-8 h-8 bg-white border rounded-full flex items-center justify-center shadow-sm"><ArrowLeft size={14}/></button>
-            <div className="my-auto space-y-4">
-              <h2 className="text-xl font-black text-slate-800">Daftarkan Karaktermu!</h2>
-              <div className="bg-white p-5 rounded-3xl border shadow-sm space-y-3">
-                <input type="text" placeholder="Nama Panggilan Kantor..." id="ln" defaultValue="Mas Wahyu" className="w-full bg-slate-50 border p-3 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"/>
-                <input type="text" placeholder="Nomor Handphone..." id="lp" defaultValue="0812345" className="w-full bg-slate-50 border p-3 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"/>
+          <div className="flex-1 flex flex-col justify-between p-8 pt-12 bg-gradient-to-b from-amber-50 via-white to-violet-50">
+            <button onClick={() => { setIsRegistering(false); setCurrentScreen('onboarding'); }} className="w-10 h-10 bg-white border border-slate-100 rounded-full flex items-center justify-center shadow-md hover:bg-slate-50 active:scale-95 transition self-start">
+              <ArrowLeft size={18} className="text-slate-700 stroke-[3]" />
+            </button>
+
+            {!isRegistering ? (
+              <div className="my-auto space-y-6">
+                <div>
+                  <span className="text-xs font-black text-amber-700 bg-amber-100 px-3.5 py-1.5 rounded-full uppercase tracking-wider">Level 1: Lapar</span>
+                  <h2 className="text-3xl font-black text-slate-900 mt-3 leading-tight">Siapa Nama <br/>Karaktermu?</h2>
+                  <p className="text-xs text-slate-500 font-medium mt-1">Masukkan Nomor HP atau ID Karyawan terdaftar untuk sinkronisasi tagihan.</p>
+                </div>
+
+                <div className="bg-white p-6 rounded-[32px] border border-violet-100 shadow-[0_10px_30px_rgba(109,40,217,0.06)] space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Kunci Akses Unik</label>
+                    <input 
+                      type="text" 
+                      placeholder="Masukkan No. HP atau ID Anda..." 
+                      id="loginInput" 
+                      className="w-full bg-slate-50 border-2 border-slate-100 focus:border-violet-500 focus:bg-white p-4 rounded-2xl text-xs font-black focus:outline-none transition-all duration-200"
+                    />
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => handleLogin(document.getElementById('loginInput')?.value)} 
+                  className="w-full bg-violet-600 hover:bg-violet-700 text-white font-black py-4 rounded-2xl text-xs shadow-lg shadow-violet-500/20 active:scale-95 transition"
+                >
+                  Masuk ke Dashboard 🚀
+                </button>
               </div>
-            </div>
-            <button onClick={() => handleLogin(document.getElementById('ln').value || 'User', document.getElementById('lp').value || '1')} className="w-full bg-indigo-600 hover:bg-indigo-700 active:scale-95 transition text-white font-extrabold py-4 rounded-2xl text-xs shadow-lg shadow-indigo-500/20">Masuk Dashboard 🚀</button>
+            ) : (
+              // --- FORM REGISTRASI RESMI KARYAWAN ---
+              <div className="my-auto space-y-6">
+                <div>
+                  <span className="text-xs font-black text-violet-700 bg-violet-100 px-3.5 py-1.5 rounded-full uppercase tracking-wider">Karyawan Baru</span>
+                  <h2 className="text-2xl font-black text-slate-900 mt-3 leading-tight">Daftarkan Akun Nimak Resmi</h2>
+                  <p className="text-xs text-slate-500 font-medium">Data Anda diperlukan agar CFO bisa merekap tagihan belanja makan siang dengan benar.</p>
+                </div>
+
+                <div className="bg-white p-6 rounded-[32px] border border-violet-100 shadow-md space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Nama Lengkap (Sesuai ID)</label>
+                    <input 
+                      type="text" 
+                      placeholder="Contoh: Mas Wahyu Desainer" 
+                      value={regForm.name} 
+                      onChange={e => setRegForm({...regForm, name: e.target.value})} 
+                      className="w-full bg-slate-50 border-2 border-slate-100 focus:border-violet-500 focus:bg-white p-3.5 rounded-xl text-xs font-bold focus:outline-none transition"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Nomor Handphone / ID</label>
+                    <input 
+                      type="text" 
+                      disabled 
+                      value={regForm.phone} 
+                      className="w-full bg-slate-100 border-2 border-slate-100 p-3.5 rounded-xl text-xs font-bold text-slate-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Divisi / Tim Kerja</label>
+                    <select 
+                      value={regForm.division} 
+                      onChange={e => setRegForm({...regForm, division: e.target.value})} 
+                      className="w-full bg-slate-50 border-2 border-slate-100 focus:border-violet-500 focus:bg-white p-3.5 rounded-xl text-xs font-bold focus:outline-none transition"
+                    >
+                      <option value="IT">Teknologi / IT</option>
+                      <option value="HRD">Sumber Daya Manusia / HRD</option>
+                      <option value="Finance">Keuangan / Finance</option>
+                      <option value="Creative">Kreatif / Desain</option>
+                      <option value="Marketing">Pemasaran / Marketing</option>
+                    </select>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={handleRegisterEmployee} 
+                  className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 rounded-2xl text-xs shadow-lg shadow-emerald-500/20 active:scale-95 transition"
+                >
+                  Selesaikan Registrasi & Masuk 🎓
+                </button>
+              </div>
+            )}
           </div>
         )}
 
-        {/* SCREEN 3: USER DASHBOARD */}
+        {/* SCREEN 3: USER DASHBOARD (Responsive, No restricted scroll) */}
         {currentScreen === 'user_dashboard' && (
           <div className="flex-1 flex flex-col min-h-0 h-full bg-[#F7F8FC]">
             
             {/* Header Profil */}
-            <div className="px-5 py-4 flex justify-between items-center bg-white border-b border-slate-100 shrink-0">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-sm border border-indigo-200">👨‍💻</div>
+            <div className="px-5 py-4 flex justify-between items-center bg-white border-b border-slate-100 shrink-0 shadow-sm">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-violet-500 to-indigo-400 flex items-center justify-center text-base border-2 border-white shadow-md text-white font-black">
+                  {currentUser?.name?.substring(0, 2).toUpperCase()}
+                </div>
                 <div>
-                  <h4 className="font-black text-xs text-slate-800">{currentUser?.name}</h4>
-                  <p className="text-[8px] text-indigo-600 font-bold">Nimak Adventurer</p>
+                  <h4 className="font-black text-xs text-slate-800 leading-tight">{currentUser?.name}</h4>
+                  <p className="text-[9px] text-violet-600 font-extrabold uppercase tracking-wider mt-0.5">{currentUser?.division || 'IT'} Team</p>
                 </div>
               </div>
-              <button onClick={handleLogout} className="w-7 h-7 bg-red-50 text-red-500 hover:bg-red-100 rounded-full flex items-center justify-center transition"><LogOut size={12}/></button>
+              <button onClick={handleLogout} className="w-8 h-8 bg-red-50 text-red-500 hover:bg-red-100 rounded-full flex items-center justify-center transition active:scale-95"><LogOut size={14}/></button>
             </div>
 
             {/* TAB CONTENT: EXPLORE (Misi Aktif) */}
             {userTab === 'explore' && (
-              <div className="flex-1 overflow-y-auto p-5 space-y-4 pb-28 min-h-0">
-                <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white p-4 rounded-3xl shadow-sm relative overflow-hidden">
-                  <Flame className="absolute -right-2 -bottom-2 text-indigo-500 opacity-20" size={60} />
-                  <span className="text-[9px] font-bold block">MISI AKTIF HARI INI</span>
-                  <p className="text-[10px] text-amber-300 font-semibold mt-1">🔥 Batas konfirmasi pesanan s/d {session?.endTime || '11:45'} WIB</p>
+              <div className="flex-1 overflow-y-auto p-5 space-y-5 pb-28 min-h-0">
+                <div className="bg-gradient-to-r from-violet-600 to-indigo-800 text-white p-5 rounded-[28px] shadow-[0_8px_20px_rgba(109,40,217,0.2)] relative overflow-hidden">
+                  <Flame className="absolute -right-2 -bottom-2 text-indigo-500 opacity-20" size={80} />
+                  <span className="text-[10px] font-black block tracking-widest text-violet-200">MISI AKTIF HARI INI</span>
+                  <p className="text-xs text-amber-300 font-extrabold mt-1.5 flex items-center gap-1.5"><Clock size={14}/> Sesi Pemesanan s/d {session?.endTime || '11:45'} WIB</p>
                 </div>
                 
-                <div className="space-y-3">
+                <div className="space-y-4">
+                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Daftar Restoran Tersedia</h3>
                   {openRestaurants.length === 0 && (
-                    <div className="bg-white border-2 border-dashed border-slate-200 p-6 rounded-3xl text-center text-slate-400 mt-4">
-                      <Store className="mx-auto mb-2 opacity-50" size={24} />
-                      <p className="text-xs font-bold text-slate-600">Lapak Sedang Tutup</p>
-                      <p className="text-[10px]">Silakan tunggu CFO membuka sesi order.</p>
+                    <div className="bg-white border-2 border-dashed border-slate-200 p-8 rounded-[32px] text-center text-slate-400 mt-4 shadow-sm">
+                      <Store className="mx-auto mb-3 opacity-50 text-violet-500" size={36} />
+                      <p className="text-xs font-black text-slate-700">Lapak Sedang Tutup</p>
+                      <p className="text-[10px] text-slate-400 mt-1">Silakan hubungi CFO untuk membuka sesi makan siang hari ini.</p>
                     </div>
                   )}
                   {openRestaurants.map(r => (
-                    <div key={r.id} className="bg-white rounded-3xl overflow-hidden border border-slate-200/60 shadow-sm relative group hover:shadow-md transition">
-                      {r.tag && <span className="absolute top-0 right-0 bg-amber-400 text-slate-900 font-black text-[8px] py-1 px-2 rounded-bl-xl z-10">{r.tag}</span>}
-                      <img src={r.image || 'https://via.placeholder.com/400'} className="w-full h-24 object-cover" alt={r.name}/>
-                      <div className="p-4 flex justify-between items-center">
-                        <div><h4 className="font-black text-xs text-slate-800">{r.name}</h4><p className="text-[9px] text-slate-400">{r.category}</p></div>
-                        <button onClick={() => viewRestoDetail(r)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-1.5 rounded-xl text-[10px] transition">Pilih Menu</button>
+                    <div key={r.id} className="bg-white rounded-[32px] overflow-hidden border border-slate-100 shadow-[0_8px_16px_rgba(0,0,0,0.02)] relative group hover:shadow-md transition duration-200">
+                      {r.tag && <span className="absolute top-0 right-0 bg-gradient-to-r from-amber-400 to-amber-300 text-slate-950 font-black text-[9px] py-1.5 px-3.5 rounded-bl-2xl z-10">{r.tag}</span>}
+                      <img src={r.image || 'https://via.placeholder.com/400'} className="w-full h-32 object-cover brightness-95" alt={r.name}/>
+                      <div className="p-5 flex justify-between items-center">
+                        <div className="space-y-1">
+                          <h4 className="font-black text-sm text-slate-800">{r.name}</h4>
+                          <p className="text-[10px] text-slate-400 font-bold flex items-center gap-1"><MapPin size={10}/> {r.distance} • {r.category}</p>
+                        </div>
+                        <button onClick={() => viewRestoDetail(r)} className="bg-violet-600 hover:bg-violet-700 text-white font-black px-4 py-2.5 rounded-2xl text-[10px] shadow-md shadow-violet-500/10 transition active:scale-95">Pilih Menu</button>
                       </div>
                     </div>
                   ))}
@@ -429,33 +678,60 @@ export default function App() {
               </div>
             )}
 
+            {/* TAB CONTENT: TIKET SAYA */}
             {userTab === 'my_orders' && (
               <div className="flex-1 overflow-y-auto p-5 space-y-4 pb-28 min-h-0">
-                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Karcis Pesanan Aktif</h3>
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Karcis Pesanan Aktif Anda</h3>
                 {orders.filter(o => o && o.userName === currentUser?.name && o.date === 'Hari Ini').length === 0 && (
-                   <div className="bg-white border-2 border-dashed border-slate-200 p-6 rounded-3xl text-center text-slate-400 mt-4">
-                     <Receipt className="mx-auto mb-2 opacity-50" size={24} />
-                     <p className="text-[10px]">Belum ada pesanan aktif hari ini.</p>
+                   <div className="bg-white border-2 border-dashed border-slate-150 p-8 rounded-[32px] text-center text-slate-400 mt-4">
+                     <Receipt className="mx-auto mb-3 opacity-40 text-violet-500" size={32} />
+                     <p className="text-xs font-bold text-slate-700">Belum ada pesanan aktif.</p>
+                     <button onClick={() => setUserTab('explore')} className="mt-4 bg-violet-100 hover:bg-violet-200 text-violet-700 font-black text-[10px] px-4 py-2.5 rounded-xl transition">Pesan Makan Siang Sekarang</button>
                    </div>
                 )}
                 {orders.filter(o => o && o.userName === currentUser?.name && o.date === 'Hari Ini').map(order => (
-                  <div key={order.id} className="bg-white rounded-3xl p-4 border border-slate-200 shadow-sm space-y-3">
-                    <div className="flex justify-between border-b pb-2 border-slate-100"><span className="font-black text-xs text-slate-800">{order.userName}</span><span className="bg-amber-100 text-amber-700 border border-amber-200 text-[8px] font-black px-2 py-0.5 rounded-full">{order.status}</span></div>
-                    <div className="space-y-1 text-xs text-slate-600 font-semibold">
+                  <div key={order.id} className="bg-white rounded-[32px] p-5 border border-slate-100 shadow-md space-y-4">
+                    <div className="flex justify-between items-center border-b pb-3 border-slate-100">
+                      <div>
+                        <span className="font-black text-xs text-slate-800">{order.userName}</span>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className="text-[8px] bg-slate-100 text-slate-500 font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider">{order.paymentMethod === 'transfer' ? '💳 Transfer' : '💵 Tunai'}</span>
+                          {order.notes && <span className="text-[9px] text-amber-600 font-semibold italic">💬 "{order.notes}"</span>}
+                        </div>
+                      </div>
+                      <span className="bg-amber-100 text-amber-700 border border-amber-200 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">{order.status}</span>
+                    </div>
+                    <div className="space-y-1.5 text-xs text-slate-600 font-bold">
                       {order.items && order.items.map((i, idx) => <div key={idx} className="flex justify-between"><span>{i?.qty}x {i?.name}</span><span className="text-slate-800">{formatRp((i?.price || 0) * (i?.qty || 0))}</span></div>)}
                     </div>
-                    <div className="border-t pt-2 border-slate-100 flex justify-between font-black text-indigo-600 text-xs"><span>TOTAL</span><span>{formatRp(order.total)}</span></div>
-                    <div className="bg-slate-50 p-2 rounded-xl text-[9px] font-mono text-center border border-slate-200 font-semibold text-slate-700 flex justify-center items-center gap-2">Transfer CFO: {session?.bankAccount} <button onClick={() => navigator.clipboard.writeText(session?.bankAccount)}><Copy size={10}/></button></div>
+                    <div className="border-t pt-3 border-slate-100 flex justify-between font-black text-violet-600 text-sm">
+                      <span>TOTAL BILL</span>
+                      <span>{formatRp(order.total)}</span>
+                    </div>
+
+                    {/* Catatan Kembalian jika Tunai */}
+                    {order.paymentMethod === 'cash' && (
+                      <div className="bg-amber-50 border border-amber-100 p-2.5 rounded-xl text-[10px] font-semibold text-amber-800 flex justify-between">
+                        <span>Uang Fisik Diberikan Karyawan:</span>
+                        <span>{formatRp(order.cashAmount)}</span>
+                      </div>
+                    )}
+
+                    <div className="bg-violet-50/50 p-3 rounded-2xl text-[9px] font-bold text-center border border-violet-100 text-violet-700 flex justify-between items-center">
+                      <span className="font-mono">Bank CFO: {session?.bankAccount}</span>
+                      <button onClick={() => { navigator.clipboard.writeText(session?.bankAccount); alert("Nomor rekening CFO disalin!"); }} className="p-1 hover:bg-violet-100 rounded-lg"><Copy size={11}/></button>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
 
+            {/* TAB CONTENT: SULTAN LEADERBOARD */}
             {userTab === 'leaderboard' && (
               <div className="flex-1 flex flex-col min-h-0 h-full overflow-hidden">
                 <div className="px-5 pt-3 flex gap-2 shrink-0">
-                  <button onClick={() => setLeaderboardSubTab('rank')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg border transition ${leaderboardSubTab === 'rank' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500'}`}>Peringkat</button>
-                  <button onClick={() => setLeaderboardSubTab('badges')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg border transition ${leaderboardSubTab === 'badges' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500'}`}>Gelar Kantor 🏅</button>
+                  <button onClick={() => setLeaderboardSubTab('rank')} className={`flex-1 py-2 text-[10px] font-black rounded-xl border transition ${leaderboardSubTab === 'rank' ? 'bg-violet-600 text-white border-violet-600 shadow-sm' : 'bg-white text-slate-500'}`}>🏆 Peringkat</button>
+                  <button onClick={() => setLeaderboardSubTab('badges')} className={`flex-1 py-2 text-[10px] font-black rounded-xl border transition ${leaderboardSubTab === 'badges' ? 'bg-violet-600 text-white border-violet-600 shadow-sm' : 'bg-white text-slate-500'}`}>🏅 Gelar Kantor</button>
                 </div>
                 
                 {leaderboardSubTab === 'rank' && (
@@ -466,15 +742,16 @@ export default function App() {
                       const total = Number(o.total) || 0;
                       return { ...acc, [name]: (acc[name] || 0) + total };
                     }, {})).sort((a,b)=>b[1]-a[1]).map(([name, total], i) => (
-                      <div key={i} className="bg-white p-3 rounded-xl border flex justify-between items-center text-xs shadow-sm hover:border-indigo-200 transition">
-                        <span className="font-black text-indigo-600">#{i+1} <span className="text-slate-800 ml-1">{name}</span></span><span className="font-bold text-slate-800">{formatRp(total)}</span>
+                      <div key={i} className="bg-white p-3.5 rounded-2xl border flex justify-between items-center text-xs shadow-sm hover:border-violet-200 transition">
+                        <span className="font-black text-violet-600">#{i+1} <span className="text-slate-800 ml-1">{name}</span></span>
+                        <span className="font-black text-slate-800">{formatRp(total)}</span>
                       </div>
                     ))}
                   </div>
                 )}
 
                 {leaderboardSubTab === 'badges' && (
-                  <div className="flex-1 overflow-y-auto p-5 space-y-2 pb-28 min-h-0">
+                  <div className="flex-1 overflow-y-auto p-5 space-y-2.5 pb-28 min-h-0">
                     {[
                       { t: "The Mukbang Master 👑", d: "Memesan > 3 menu dalam 1 order", w: dynamicBadges.mukbangMaster?.name || '-' },
                       { t: "Selera Elit 🌾", d: "Total pesanan termahal sebulan", w: dynamicBadges.seleraElit?.name || '-' },
@@ -484,9 +761,10 @@ export default function App() {
                       { t: "The Last Survivor ⏱️", d: "Pemesan terakhir paling mepet", w: dynamicBadges.lastSurvivor?.userName || '-' },
                       { t: "Diet Mulai Besok 🥗", d: "Pemesan paling awal hari ini", w: dynamicBadges.dietBesok?.userName || '-' }
                     ].map((b, i) => (
-                      <div key={i} className="bg-white p-3 rounded-2xl border text-[11px] space-y-0.5 shadow-sm hover:border-indigo-200 transition">
-                        <h4 className="font-black text-slate-800">{b.t}</h4><p className="text-[9px] text-slate-400">{b.d}</p>
-                        <p className="text-[9px] text-indigo-600 font-bold pt-1">Penyandang: <span className="text-slate-800 bg-slate-100 px-1.5 rounded">{b.w}</span></p>
+                      <div key={i} className="bg-white p-4 rounded-3xl border text-[11px] space-y-1 shadow-sm hover:border-violet-200 transition">
+                        <h4 className="font-black text-slate-800">{b.t}</h4>
+                        <p className="text-[10px] text-slate-400 font-medium leading-normal">{b.d}</p>
+                        <p className="text-[10px] text-violet-600 font-black pt-1">Penyandang: <span className="text-slate-800 bg-slate-100 px-2 py-0.5 rounded-lg">{b.w}</span></p>
                       </div>
                     ))}
                   </div>
@@ -520,13 +798,13 @@ export default function App() {
                 const cItem = cart.find(c => c.menuId === menu.id);
                 const qty = cItem ? cItem.qty : 0;
                 return (
-                  <div key={menu.id} className={`bg-white p-4 rounded-2xl border flex justify-between items-center text-xs shadow-sm transition ${qty > 0 ? 'border-indigo-400 ring-2 ring-indigo-500/10' : 'hover:border-slate-300'}`}>
+                  <div key={menu.id} className={`bg-white p-4 rounded-3xl border flex justify-between items-center text-xs shadow-sm transition ${qty > 0 ? 'border-violet-400 ring-2 ring-violet-500/10' : 'hover:border-slate-300'}`}>
                     <div className="max-w-[65%]">
-                      <div className="flex items-center gap-1.5 mb-1"><h4 className="font-bold text-slate-800 leading-tight">{menu.name}</h4>{menu.tag && <span className="text-[7px] bg-indigo-100 text-indigo-700 px-1.5 rounded font-bold whitespace-nowrap">{menu.tag}</span>}</div>
+                      <div className="flex items-center gap-1.5 mb-1"><h4 className="font-bold text-slate-800 leading-tight">{menu.name}</h4>{menu.tag && <span className="text-[7px] bg-violet-100 text-violet-700 px-1.5 rounded font-bold whitespace-nowrap">{menu.tag}</span>}</div>
                       <p className="text-[9px] text-slate-400 line-clamp-2 leading-relaxed">{menu.desc}</p>
-                      <p className="text-indigo-600 font-black mt-1.5">{formatRp(menu.price)}</p>
+                      <p className="text-violet-600 font-black mt-1.5">{formatRp(menu.price)}</p>
                     </div>
-                    {qty === 0 ? <button onClick={() => handleUpdateCart(menu, 1)} className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold px-3 py-1.5 rounded-xl shrink-0 transition">Pilih</button> :
+                    {qty === 0 ? <button onClick={() => handleUpdateCart(menu, 1)} className="bg-violet-50 hover:bg-violet-100 text-violet-600 font-bold px-3 py-1.5 rounded-xl shrink-0 transition">Pilih</button> :
                     <div className="flex items-center gap-2 bg-slate-50 border p-1 rounded-xl shrink-0"><button onClick={() => handleUpdateCart(menu, -1)} className="font-bold px-2 py-1 text-slate-600 hover:bg-white rounded">-</button><span className="font-bold w-3 text-center">{qty}</span><button onClick={() => handleUpdateCart(menu, 1)} className="font-bold px-2 py-1 text-slate-600 hover:bg-white rounded">+</button></div>}
                   </div>
                 );
@@ -534,15 +812,70 @@ export default function App() {
             </div>
             
             {cartItemsCount > 0 && (
-              <div className="absolute bottom-0 left-0 right-0 bg-white border-t p-4 rounded-t-[32px] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] flex justify-between items-center z-40">
-                <div><span className="text-[9px] text-slate-400 block font-bold">TOTAL BAYAR</span><span className="text-base font-black text-indigo-600">{formatRp(cartTotal)}</span></div>
-                <button onClick={handleCheckout} className="bg-indigo-600 text-white font-extrabold py-3 px-6 rounded-2xl text-xs shadow-lg shadow-indigo-500/30 active:scale-95 transition flex items-center gap-2">Konfirmasi <Check size={14}/></button>
+              <div className="absolute bottom-0 left-0 right-0 bg-white border-t p-4 rounded-t-[32px] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] flex flex-col gap-4 z-40">
+                {/* --- SEKSI METODE BAYAR & INPUT CASH --- */}
+                <div className="px-5 pt-4 space-y-3">
+                  <div className="flex gap-2">
+                    {/* Pilih Transfer (Hanya jika diizinkan CFO) */}
+                    {session.allowTransfer && (
+                      <button 
+                        onClick={() => setPaymentMethod('transfer')}
+                        className={`flex-1 py-3 px-4 rounded-2xl border-2 text-xs font-black flex items-center justify-center gap-2 transition ${paymentMethod === 'transfer' ? 'border-violet-600 bg-violet-50 text-violet-700' : 'border-slate-100 bg-slate-50 text-slate-400'}`}
+                      >
+                        <CreditCard size={14}/> Transfer Bank
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => setPaymentMethod('cash')}
+                      className={`flex-1 py-3 px-4 rounded-2xl border-2 text-xs font-black flex items-center justify-center gap-2 transition ${paymentMethod === 'cash' ? 'border-violet-600 bg-violet-50 text-violet-700' : 'border-slate-100 bg-slate-50 text-slate-400'}`}
+                    >
+                      <Coins size={14}/> Uang Tunai (Cash)
+                    </button>
+                  </div>
+
+                  {/* Input Jumlah Uang Fisik jika memilih Cash */}
+                  {paymentMethod === 'cash' && (
+                    <div className="space-y-1 bg-amber-50/50 p-3.5 rounded-2xl border border-amber-100">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-black text-amber-700 uppercase">Fisik Cash yang diberikan</label>
+                        <span className="text-[9px] text-slate-400 font-bold">Harus &ge; {formatRp(cartTotal)}</span>
+                      </div>
+                      <input 
+                        type="number" 
+                        placeholder="Contoh: 20000 atau 50000"
+                        value={cashAmountInput}
+                        onChange={e => setCashAmountInput(e.target.value)}
+                        className="w-full bg-white border-2 border-amber-200 p-2.5 rounded-xl text-xs font-bold focus:outline-none focus:border-amber-400 transition"
+                      />
+                      {Number(cashAmountInput) >= cartTotal && (
+                        <p className="text-[10px] font-bold text-emerald-600 mt-1 flex justify-between">
+                          <span>Kembalian CFO ke Anda:</span>
+                          <span>{formatRp(Number(cashAmountInput) - cartTotal)}</span>
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Input Catatan Pesanan */}
+                  <input 
+                    type="text" 
+                    placeholder="Tulis catatan order (Mis: Kuah koya pisah, no sendok)..." 
+                    value={orderNotes}
+                    onChange={e => setOrderNotes(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-100 p-3 rounded-xl text-xs font-bold focus:outline-none focus:border-violet-500 transition"
+                  />
+                </div>
+
+                <div className="flex justify-between items-center p-5 border-t bg-slate-50/50">
+                  <div><span className="text-[9px] text-slate-400 block font-bold">TOTAL BILL</span><span className="text-base font-black text-violet-600">{formatRp(cartTotal)}</span></div>
+                  <button onClick={handleCheckout} className="bg-violet-600 hover:bg-violet-700 text-white font-black py-3.5 px-6 rounded-2xl text-xs shadow-lg shadow-violet-500/30 active:scale-95 transition flex items-center gap-2">Pesan & Kirim <Check size={14}/></button>
+                </div>
               </div>
             )}
           </div>
         )}
 
-        {/* SCREEN 5: CFO ADMIN PANEL (FULL SINKRONISASI & SCROLL BEBAS) */}
+        {/* SCREEN 5: CFO ADMIN PANEL (SANGAT COMPLIANT DENGAN PRD) */}
         {currentScreen === 'admin_dashboard' && (
           <div className="flex-1 flex flex-col min-h-0 h-full bg-[#F7F8FC]">
             
@@ -550,12 +883,14 @@ export default function App() {
             <div className="bg-slate-900 text-white p-4 flex flex-col gap-3 shrink-0 shadow-md z-10">
               <div className="flex justify-between items-center">
                 <h1 className="font-black text-xs flex items-center gap-1 text-indigo-300"><Shield size={14}/> CFO Panel Master</h1>
-                <button onClick={() => { setCurrentScreen('user_dashboard'); setUserTab('explore'); }} className="text-[9px] font-bold bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg text-slate-200 transition">User Mode</button>
+                <button onClick={() => { setCurrentScreen('user_dashboard'); setUserTab('explore'); }} className="text-[9px] font-bold bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg text-slate-200 transition">Ke User Mode</button>
               </div>
               
+              {/* TOP TABS: Rekap Order vs Kelola Data */}
               <div className="flex bg-slate-800 p-1 rounded-xl">
-                <button onClick={() => setCfoMainTab('rekap')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all ${cfoMainTab === 'rekap' ? 'bg-indigo-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}>📊 Rekap Order</button>
-                <button onClick={() => setCfoMainTab('kelola')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all ${cfoMainTab === 'kelola' ? 'bg-indigo-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}>🛠️ Master Data</button>
+                <button onClick={() => setCfoMainTab('rekap')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all ${cfoMainTab === 'rekap' ? 'bg-violet-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}>📊 Rekap Order</button>
+                <button onClick={() => setCfoMainTab('users')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all ${cfoMainTab === 'users' ? 'bg-violet-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}>👥 Tagihan Karyawan</button>
+                <button onClick={() => setCfoMainTab('kelola')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all ${cfoMainTab === 'kelola' ? 'bg-violet-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}>🛠️ Master Data</button>
               </div>
             </div>
             
@@ -565,11 +900,36 @@ export default function App() {
               {/* --- 1. VIEW REKAP ORDER --- */}
               {cfoMainTab === 'rekap' && (
                 <>
-                  <div className="flex justify-between items-center p-3.5 bg-white border border-indigo-100 rounded-2xl shadow-sm">
-                    <div><span className="font-bold text-xs text-slate-800 block">Sesi Order Global</span><span className="text-[9px] text-slate-400">Terima pesanan karyawan?</span></div>
-                    <div onClick={handleToggleLapak} className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition duration-300 ${session?.isOpen ? 'bg-emerald-500' : 'bg-slate-300'}`}>
-                      <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition duration-300 ${session?.isOpen ? 'translate-x-6' : ''}`}></div>
+                  <div className="flex flex-col gap-3 p-4 bg-white border border-indigo-50 rounded-2xl shadow-sm">
+                    <div className="flex justify-between items-center">
+                      <div><span className="font-bold text-xs text-slate-800 block">Sesi Order Global</span><span className="text-[9px] text-slate-400">Terima pesanan karyawan?</span></div>
+                      <div onClick={handleToggleLapak} className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition duration-300 ${session?.isOpen ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+                        <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition duration-300 ${session?.isOpen ? 'translate-x-6' : ''}`}></div>
+                      </div>
                     </div>
+
+                    <div className="border-t pt-3 flex justify-between items-center">
+                      <div><span className="font-bold text-xs text-slate-800 block">Buka Gerbang Transfer</span><span className="text-[9px] text-slate-400">Jika mati, hanya Cash Only</span></div>
+                      <div onClick={handleToggleAllowTransfer} className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition duration-300 ${session?.allowTransfer ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+                        <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition duration-300 ${session?.allowTransfer ? 'translate-x-6' : ''}`}></div>
+                      </div>
+                    </div>
+
+                    {session?.allowTransfer && (
+                      <div className="border-t pt-3 space-y-1.5">
+                        <label className="block text-[9px] font-black text-slate-400 uppercase">Rekening Transfer CFO</label>
+                        <div className="flex gap-2">
+                          <input 
+                            type="text" 
+                            placeholder="Contoh: BCA 123456 a/n Joko" 
+                            id="bankAccInput"
+                            defaultValue={session?.bankAccount}
+                            className="flex-1 bg-slate-50 border p-2 rounded-xl text-xs font-bold outline-none"
+                          />
+                          <button onClick={() => handleSaveBankAccount(document.getElementById('bankAccInput')?.value)} className="bg-violet-600 text-white font-bold px-3 py-2 rounded-xl text-[10px] whitespace-nowrap">Update</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex bg-slate-200 p-1 rounded-xl border">
@@ -578,17 +938,70 @@ export default function App() {
                     <button onClick={() => setAdminViewTab('menu')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition ${adminViewTab === 'menu' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>📋 Per Menu</button>
                   </div>
 
+                  {/* View 1: Per Orang (Lengkap dengan Rekonsiliasi Cash & Notes Admin) */}
                   {adminViewTab === 'orang' && orders.filter(o => o && o.date === 'Hari Ini').map(o => (
-                    <div key={o.id} className="bg-white p-3.5 rounded-2xl border text-xs shadow-sm space-y-2">
-                      <div className="flex justify-between font-bold border-b border-slate-100 pb-1.5"><span>{o.userName}</span><span className="text-indigo-600">{formatRp(o.total)}</span></div>
-                      <p className="text-[10px] text-slate-500 font-semibold leading-relaxed">{o.items ? o.items.map(i => `${i?.qty || 0}x ${i?.name || 'Menu'}`).join(', ') : '-'}</p>
+                    <div key={o.id} className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm space-y-3">
+                      <div className="flex justify-between font-bold border-b border-slate-100 pb-2">
+                        <div>
+                          <span className="text-slate-900">{o.userName}</span>
+                          <span className="text-[9px] text-slate-400 font-bold block">Divisi: {o.division || 'IT'}</span>
+                        </div>
+                        <span className="text-violet-600 font-black">{formatRp(o.total)}</span>
+                      </div>
+                      
+                      <p className="text-[10px] text-slate-500 font-bold leading-relaxed">{o.items ? o.items.map(i => `${i?.qty || 0}x ${i?.name || 'Menu'}`).join(', ') : '-'}</p>
+                      
+                      {o.notes && (
+                        <p className="text-[9px] text-amber-600 bg-amber-50 p-2 rounded-xl font-bold">💬 Karyawan Note: "{o.notes}"</p>
+                      )}
+
+                      {/* --- FORM REKONSILIASI KEUANGAN --- */}
+                      <div className="bg-slate-50/50 p-3 rounded-2xl border border-slate-100 space-y-2">
+                        <p className="text-[9px] font-black text-slate-400 uppercase">Konfirmasi Pembayaran ({o.paymentMethod === 'transfer' ? '💳 Transfer' : '💵 Tunai'})</p>
+                        
+                        {o.paymentMethod === 'cash' && (
+                          <p className="text-[9px] text-slate-500 font-bold">Karyawan membawa cash: <strong className="text-slate-800">{formatRp(o.cashAmount)}</strong> (Kembalian: {formatRp((o.cashAmount || 0) - o.total)})</p>
+                        )}
+
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <span className="text-[8px] font-bold text-slate-400">Total Diterima CFO</span>
+                            <input 
+                              type="number" 
+                              placeholder="Fisik Diterima..."
+                              defaultValue={o.cfoReceivedAmount || ''}
+                              onChange={e => setReconcileAmounts({...reconcileAmounts, [o.id]: e.target.value})}
+                              className="w-full bg-white border p-1.5 rounded-lg text-[10px] font-bold outline-none focus:border-violet-500"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <span className="text-[8px] font-bold text-slate-400">Catatan Admin</span>
+                            <input 
+                              type="text" 
+                              placeholder="Mis: Lunas / Kurang"
+                              defaultValue={o.cfoAdminNotes || ''}
+                              onChange={e => setReconcileNotes({...reconcileNotes, [o.id]: e.target.value})}
+                              className="w-full bg-white border p-1.5 rounded-lg text-[10px] outline-none focus:border-violet-500"
+                            />
+                          </div>
+                        </div>
+
+                        <button 
+                          onClick={() => handleReconcileOrder(o.id)}
+                          className="w-full bg-slate-900 text-white text-[9px] font-black py-1.5 rounded-xl hover:bg-slate-800 transition"
+                        >
+                          Simpan & Cocokkan Uang Diterima
+                        </button>
+                      </div>
+
                       <div className="flex justify-end gap-2 pt-2 border-t border-slate-50">
-                        <button onClick={() => handleUpdateOrderStatus(o.id, 'Diproses CFO')} className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[9px] px-3 py-1 rounded-lg transition">Proses</button>
-                        <button onClick={() => handleUpdateOrderStatus(o.id, 'Selesai')} className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[9px] px-3 py-1 rounded-lg transition">Selesai</button>
+                        <button onClick={() => handleUpdateOrderStatus(o.id, 'Diproses CFO')} className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[9px] px-3 py-1.5 rounded-lg transition">Mulai Proses</button>
+                        <button onClick={() => handleUpdateOrderStatus(o.id, 'Selesai')} className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[9px] px-3 py-1.5 rounded-lg transition">Selesaikan</button>
                       </div>
                     </div>
                   ))}
 
+                  {/* View 2: Per Resto */}
                   {adminViewTab === 'resto' && ordersByResto.map((r, i) => (
                     <div key={i} className="bg-white p-3.5 rounded-2xl border text-xs shadow-sm space-y-2">
                       <div className="flex justify-between font-black border-b border-slate-100 pb-1.5 text-slate-800"><span>🏢 {r.restoName}</span><span className="text-indigo-600">{formatRp(r.totalCost)}</span></div>
@@ -596,6 +1009,7 @@ export default function App() {
                     </div>
                   ))}
 
+                  {/* View 3: Per Menu */}
                   {adminViewTab === 'menu' && (
                     <div className="bg-white rounded-2xl border shadow-sm divide-y divide-slate-100 text-xs">
                       {ordersByMenu.map((m, i) => <div key={i} className="p-3.5 flex justify-between items-center font-bold text-slate-700"><span>{m.menuName}</span><span className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg text-[10px]">{m.qty} Porsi</span></div>)}
@@ -604,7 +1018,41 @@ export default function App() {
                 </>
               )}
 
-              {/* --- 2. VIEW KELOLA MASTER DATA --- */}
+              {/* --- 2. TAB: DAFTAR KARYAWAN & TAGIHAN (PRD Compliant) --- */}
+              {cfoMainTab === 'users' && (
+                <div className="space-y-4">
+                  <div className="bg-white p-4 rounded-3xl border shadow-sm space-y-1.5">
+                    <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5"><Users size={16} className="text-violet-500"/> Buku Kas Tagihan Karyawan</h3>
+                    <p className="text-[10px] text-slate-400">Total akumulasi sisa tagihan terutang makan siang yang wajib ditagih CFO.</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {usersList.length === 0 ? (
+                      <p className="text-center text-xs text-slate-400 py-10 bg-white border rounded-2xl">Belum ada karyawan terdaftar.</p>
+                    ) : (
+                      usersList.map(u => {
+                        const debt = userDebts[u.name] || 0;
+                        return (
+                          <div key={u.id} className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex justify-between items-center">
+                            <div>
+                              <h4 className="font-black text-xs text-slate-800">{u.name}</h4>
+                              <p className="text-[9px] text-slate-400 font-bold">Divisi: {u.division} • {u.phone}</p>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[8px] text-slate-400 font-black block uppercase">SISA TAGIHAN</span>
+                              <span className={`font-black text-xs ${debt > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
+                                {debt > 0 ? formatRp(debt) : 'Lunas ✨'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* --- 3. TAB: KELOLA MASTER DATA --- */}
               {cfoMainTab === 'kelola' && (
                 <div className="space-y-6">
                   <div className="bg-white p-4 rounded-2xl border shadow-sm space-y-3">
@@ -616,7 +1064,7 @@ export default function App() {
                         <input type="text" placeholder="Tag (Opsional)" value={newResto.tag} onChange={e => setNewResto({...newResto, tag: e.target.value})} className="w-1/3 bg-slate-50 border p-2.5 rounded-xl text-[10px] focus:border-indigo-500 outline-none transition" />
                       </div>
                       <div className="flex items-center gap-2 mt-2">
-                        <input type="file" accept="image/*" ref={fileInputRef} onChange={(e) => handleImageChange(e, false)} className="hidden" />
+                        <input type="file" accept="image/*" ref={fileInputRef} className="hidden" />
                         <button onClick={() => fileInputRef.current.click()} className="flex-1 bg-slate-50 hover:bg-slate-100 border border-slate-300 border-dashed text-slate-600 font-semibold p-2.5 rounded-xl text-[10px] flex items-center justify-center gap-2 transition">
                           {isCompressing ? <span className="animate-pulse">⏳ Mengompresi...</span> : <><Upload size={14}/> {newResto.image ? 'Foto Siap!' : 'Upload Foto'}</>}
                         </button>
@@ -661,7 +1109,7 @@ export default function App() {
                                 <input type="text" value={editingResto.tag} onChange={e=>setEditingResto({...editingResto, tag: e.target.value})} className="w-1/2 text-[10px] p-2 rounded-lg border outline-none" placeholder="Tag"/>
                               </div>
                               <div className="flex items-center gap-2">
-                                <input type="file" accept="image/*" ref={editFileInputRef} onChange={(e) => handleImageChange(e, true)} className="hidden" />
+                                <input type="file" accept="image/*" ref={editFileInputRef} className="hidden" />
                                 <button onClick={() => editFileInputRef.current.click()} className="text-[9px] font-bold bg-white border px-2 py-1.5 rounded-lg flex items-center gap-1"><Upload size={10}/> Ganti Foto</button>
                                 <div className="flex-1 flex gap-1 justify-end">
                                   <button onClick={submitEditResto} className="bg-indigo-600 text-white text-[9px] font-bold px-3 py-1.5 rounded-lg">Simpan</button>
