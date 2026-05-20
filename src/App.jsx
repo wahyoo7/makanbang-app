@@ -15,7 +15,7 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, setDoc, collection, onSnapshot, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 
 // ============================================================================
-// ⚙️ FIREBASE CONFIGURATION (KREDENSIAL ASLI NIMAK - DIJAMIN AMAN)
+// ⚙️ FIREBASE CONFIGURATION (KREDENSIAL ASLI NIMAK)
 // ============================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyA4WWxScF_k7CeXYJWXPBQCU_z4E50oCA4",
@@ -26,7 +26,7 @@ const firebaseConfig = {
   appId: "1:958561448423:web:afae6cb869ba9d2d408d42"
 };
 
-// Inisialisasi Firestore Secara Langsung (Tanpa Hambatan Gate Auth)
+// Inisialisasi Firestore Secara Langsung (Anti-Gagal)
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'nimak-bfe56-app';
@@ -115,7 +115,7 @@ export default function App() {
     rejectMessage: 'Waduh petualangan kuliner hari ini sudah ditutup! 😭 Hubungi CFO jika darurat!'
   });
 
-  // --- 📡 SINKRONISASI DATABASE LANGSUNG TANPA AUTH GATE ---
+  // --- 📡 SINKRONISASI DATABASE REALTIME INSTAN (Direct Connection) ---
   useEffect(() => {
     const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'session', 'current');
     const ordersRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
@@ -134,14 +134,18 @@ export default function App() {
 
     const unsubRestos = onSnapshot(restosRef, (snap) => {
       const list = []; snap.forEach(d => list.push({ id: d.id, ...d.data() }));
-      if (list.length > 0) setRestaurants(list);
-      else initialRestaurants.forEach(r => setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'restaurants', r.id), r));
+      setRestaurants(list.length > 0 ? list : initialRestaurants);
+      if (list.length === 0) {
+        initialRestaurants.forEach(r => setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'restaurants', r.id), r));
+      }
     });
 
     const unsubMenus = onSnapshot(menusRef, (snap) => {
       const list = []; snap.forEach(d => list.push({ id: d.id, ...d.data() }));
-      if (list.length > 0) setMenus(list);
-      else initialMenus.forEach(m => setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'menus', m.id), m));
+      setMenus(list.length > 0 ? list : initialMenus);
+      if (list.length === 0) {
+        initialMenus.forEach(m => setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'menus', m.id), m));
+      }
     });
 
     return () => { unsubSession(); unsubOrders(); unsubRestos(); unsubMenus(); };
@@ -170,7 +174,7 @@ export default function App() {
 
   const handleAddResto = async () => {
     if (!newResto.name || !newResto.category) return alert("Nama dan Kategori wajib diisi!");
-    const finalResto = { ...newResto, rating: 5.0, reviews: 0, image: newResto.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80' };
+    const finalResto = { ...newResto, rating: 5.0, reviews: 0, image: newResto.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80' };
     
     try {
       const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'restaurants'), finalResto);
@@ -218,7 +222,7 @@ export default function App() {
     }
   };
 
-  // --- GENERAL APP FLOW ---
+  // --- GENERAL USER FLOW ---
   const handleStartAdventure = () => setCurrentScreen('login');
   const handleLogin = (name, phone) => {
     const role = phone === '0000' ? 'admin' : 'user';
@@ -331,16 +335,23 @@ export default function App() {
   }, [orders]);
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-4 font-sans selection:bg-indigo-500 selection:text-white">
-      <div className="w-full max-w-[410px] bg-[#F7F8FC] h-[820px] flex flex-col relative shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-[48px] border-[10px] border-slate-950 overflow-hidden">
+    <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center font-sans selection:bg-indigo-500 selection:text-white">
+      
+      {/* Container Adaptif: Fullscreen di HP Karyawan, Card Elegan di Desktop */}
+      <div className="w-full sm:max-w-md h-[100dvh] sm:h-[85vh] sm:min-h-[780px] sm:max-h-[900px] bg-[#F7F8FC] flex flex-col relative sm:shadow-2xl sm:rounded-[36px] sm:border sm:border-slate-200/80 overflow-hidden transition-all duration-300">
         
         {/* SCREEN 1: ONBOARDING */}
         {currentScreen === 'onboarding' && (
-          <div className="flex-1 flex flex-col justify-between p-8 pt-16 bg-gradient-to-b from-[#E2E6FF] via-[#EAEFFF] to-[#F5F8FF]">
+          <div className="flex-1 flex flex-col justify-between p-8 pt-12 bg-gradient-to-b from-[#E2E6FF] via-[#EAEFFF] to-[#F5F8FF]">
             <span className="text-xs font-black text-indigo-600">09:40 WIB</span>
-            <div className="text-center space-y-6">
-              <div className="w-48 h-48 rounded-[40px] bg-indigo-100 flex items-center justify-center shadow-inner mx-auto"><span className="text-8xl transform hover:scale-110 transition duration-300">🍱</span></div>
-              <h1 className="text-3xl font-black text-slate-800 leading-none">Welcome to <br/><span className="text-indigo-600 bg-indigo-100 px-3 py-1 rounded-2xl inline-block mt-1">Nimak</span></h1>
+            <div className="text-center space-y-6 my-auto">
+              <div className="w-40 h-40 rounded-[36px] bg-indigo-100 flex items-center justify-center shadow-inner mx-auto">
+                <span className="text-7xl transform hover:scale-110 transition duration-300">🍱</span>
+              </div>
+              <h1 className="text-3xl font-black text-slate-800 leading-none">
+                Welcome to <br/>
+                <span className="text-indigo-600 bg-indigo-100 px-3 py-1 rounded-2xl inline-block mt-1">Nimak</span>
+              </h1>
               <p className="text-xs text-slate-500 max-w-[240px] mx-auto">Sistem Petualangan Makan Siang Kantor Seru, Cepat, & Kompetitif.</p>
             </div>
             
@@ -350,7 +361,7 @@ export default function App() {
               </button>
               <div className="flex justify-between items-center px-2 mt-4">
                 <span className="text-xs text-slate-400 font-semibold cursor-pointer hover:text-indigo-600" onClick={() => handleLogin('Admin CFO', '0000')}>Masuk CFO (Admin)</span>
-                <span className="text-[10px] text-slate-400 font-bold bg-slate-200 px-2 py-0.5 rounded-full">Nimak v3.7</span>
+                <span className="text-[10px] text-slate-400 font-bold bg-slate-200 px-2 py-0.5 rounded-full">Nimak v3.8</span>
               </div>
             </div>
           </div>
@@ -358,7 +369,7 @@ export default function App() {
 
         {/* SCREEN 2: LOGIN */}
         {currentScreen === 'login' && (
-          <div className="flex-1 flex flex-col justify-between p-8 pt-16 bg-gradient-to-b from-[#FFF5E6] via-white to-[#F7F8FC]">
+          <div className="flex-1 flex flex-col justify-between p-8 pt-12 bg-gradient-to-b from-[#FFF5E6] via-white to-[#F7F8FC]">
             <button onClick={() => setCurrentScreen('onboarding')} className="w-8 h-8 bg-white border rounded-full flex items-center justify-center shadow-sm"><ArrowLeft size={14}/></button>
             <div className="my-auto space-y-4">
               <h2 className="text-xl font-black text-slate-800">Daftarkan Karaktermu!</h2>
@@ -373,22 +384,29 @@ export default function App() {
 
         {/* SCREEN 3: USER DASHBOARD */}
         {currentScreen === 'user_dashboard' && (
-          <div className="flex-1 flex flex-col bg-[#F7F8FC] pt-12">
-            <div className="px-5 pb-3 flex justify-between items-center bg-white border-b border-slate-100">
+          <div className="flex-1 flex flex-col min-h-0 h-full bg-[#F7F8FC]">
+            
+            {/* Header Profil */}
+            <div className="px-5 py-4 flex justify-between items-center bg-white border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-sm border border-indigo-200">👨‍💻</div>
-                <div><h4 className="font-black text-xs text-slate-800">{currentUser?.name}</h4><p className="text-[8px] text-indigo-600 font-bold">Nimak Adventurer</p></div>
+                <div>
+                  <h4 className="font-black text-xs text-slate-800">{currentUser?.name}</h4>
+                  <p className="text-[8px] text-indigo-600 font-bold">Nimak Adventurer</p>
+                </div>
               </div>
               <button onClick={handleLogout} className="w-7 h-7 bg-red-50 text-red-500 hover:bg-red-100 rounded-full flex items-center justify-center transition"><LogOut size={12}/></button>
             </div>
 
+            {/* TAB CONTENT: EXPLORE (Misi Aktif) */}
             {userTab === 'explore' && (
-              <div className="flex-1 overflow-y-auto p-5 space-y-4 pb-24">
+              <div className="flex-1 overflow-y-auto p-5 space-y-4 pb-28 min-h-0">
                 <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white p-4 rounded-3xl shadow-sm relative overflow-hidden">
                   <Flame className="absolute -right-2 -bottom-2 text-indigo-500 opacity-20" size={60} />
                   <span className="text-[9px] font-bold block">MISI AKTIF HARI INI</span>
                   <p className="text-[10px] text-amber-300 font-semibold mt-1">🔥 Batas konfirmasi pesanan s/d {session?.endTime || '11:45'} WIB</p>
                 </div>
+                
                 <div className="space-y-3">
                   {openRestaurants.length === 0 && (
                     <div className="bg-white border-2 border-dashed border-slate-200 p-6 rounded-3xl text-center text-slate-400 mt-4">
@@ -412,7 +430,7 @@ export default function App() {
             )}
 
             {userTab === 'my_orders' && (
-              <div className="flex-1 overflow-y-auto p-5 space-y-4 pb-24">
+              <div className="flex-1 overflow-y-auto p-5 space-y-4 pb-28 min-h-0">
                 <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Karcis Pesanan Aktif</h3>
                 {orders.filter(o => o && o.userName === currentUser?.name && o.date === 'Hari Ini').length === 0 && (
                    <div className="bg-white border-2 border-dashed border-slate-200 p-6 rounded-3xl text-center text-slate-400 mt-4">
@@ -434,14 +452,14 @@ export default function App() {
             )}
 
             {userTab === 'leaderboard' && (
-              <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-1 flex flex-col min-h-0 h-full overflow-hidden">
                 <div className="px-5 pt-3 flex gap-2 shrink-0">
                   <button onClick={() => setLeaderboardSubTab('rank')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg border transition ${leaderboardSubTab === 'rank' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500'}`}>Peringkat</button>
                   <button onClick={() => setLeaderboardSubTab('badges')} className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg border transition ${leaderboardSubTab === 'badges' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500'}`}>Gelar Kantor 🏅</button>
                 </div>
                 
                 {leaderboardSubTab === 'rank' && (
-                  <div className="flex-1 overflow-y-auto p-5 space-y-2 pb-24">
+                  <div className="flex-1 overflow-y-auto p-5 space-y-2 pb-28 min-h-0">
                     {Object.entries(orders.reduce((acc, o) => {
                       if (!o) return acc;
                       const name = o.userName || 'User';
@@ -456,7 +474,7 @@ export default function App() {
                 )}
 
                 {leaderboardSubTab === 'badges' && (
-                  <div className="flex-1 overflow-y-auto p-5 space-y-2 pb-24">
+                  <div className="flex-1 overflow-y-auto p-5 space-y-2 pb-28 min-h-0">
                     {[
                       { t: "The Mukbang Master 👑", d: "Memesan > 3 menu dalam 1 order", w: dynamicBadges.mukbangMaster?.name || '-' },
                       { t: "Selera Elit 🌾", d: "Total pesanan termahal sebulan", w: dynamicBadges.seleraElit?.name || '-' },
@@ -477,7 +495,7 @@ export default function App() {
             )}
 
             {/* Bottom Nav User */}
-            <div className="absolute bottom-4 left-4 right-4 bg-slate-900/95 backdrop-blur-md rounded-[24px] p-2 flex justify-around text-slate-400 z-30 shadow-2xl border border-slate-700">
+            <div className="absolute bottom-4 left-4 right-4 bg-slate-900/95 backdrop-blur-md rounded-[24px] p-2 flex justify-around text-slate-400 z-30 shadow-2xl border border-slate-700/80">
               <button onClick={() => setUserTab('explore')} className={`flex flex-col items-center text-[8px] font-bold transition ${userTab === 'explore' ? 'text-amber-400 scale-110' : 'hover:text-white'}`}><Compass size={16}/>EXPLORE</button>
               <button onClick={() => setUserTab('my_orders')} className={`flex flex-col items-center text-[8px] font-bold transition ${userTab === 'my_orders' ? 'text-amber-400 scale-110' : 'hover:text-white'}`}><Receipt size={16}/>TIKET SAYA</button>
               <button onClick={() => setUserTab('leaderboard')} className={`flex flex-col items-center text-[8px] font-bold transition ${userTab === 'leaderboard' ? 'text-amber-400 scale-110' : 'hover:text-white'}`}><Trophy size={16}/>SULTAN</button>
@@ -490,12 +508,13 @@ export default function App() {
 
         {/* SCREEN 4: RESTORAN DETAIL */}
         {currentScreen === 'restaurant_detail' && (
-          <div className="flex-1 flex flex-col bg-[#F7F8FC] pt-12">
+          <div className="flex-1 flex flex-col min-h-0 h-full bg-[#F7F8FC]">
             <div className="p-4 bg-white border-b flex items-center gap-3 shrink-0 shadow-sm z-10">
               <button onClick={() => setCurrentScreen('user_dashboard')} className="p-1 hover:bg-slate-100 rounded-lg transition"><ArrowLeft size={18}/></button>
               <h3 className="font-black text-sm text-slate-800 line-clamp-1">{selectedResto?.name}</h3>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-24">
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-28 min-h-0">
               {filteredMenus.length === 0 && <div className="text-center text-xs text-slate-400 py-10 bg-white border border-dashed rounded-2xl"><Utensils className="mx-auto mb-2 opacity-50"/>Belum ada menu di resto ini.</div>}
               {filteredMenus.map(menu => {
                 const cItem = cart.find(c => c.menuId === menu.id);
@@ -507,12 +526,13 @@ export default function App() {
                       <p className="text-[9px] text-slate-400 line-clamp-2 leading-relaxed">{menu.desc}</p>
                       <p className="text-indigo-600 font-black mt-1.5">{formatRp(menu.price)}</p>
                     </div>
-                    {qty === 0 ? <button onClick={() => handleUpdateCart(menu, 1)} className="bg-indigo-50 text-indigo-600 font-bold px-3 py-1.5 rounded-xl shrink-0 transition">Pilih</button> :
+                    {qty === 0 ? <button onClick={() => handleUpdateCart(menu, 1)} className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold px-3 py-1.5 rounded-xl shrink-0 transition">Pilih</button> :
                     <div className="flex items-center gap-2 bg-slate-50 border p-1 rounded-xl shrink-0"><button onClick={() => handleUpdateCart(menu, -1)} className="font-bold px-2 py-1 text-slate-600 hover:bg-white rounded">-</button><span className="font-bold w-3 text-center">{qty}</span><button onClick={() => handleUpdateCart(menu, 1)} className="font-bold px-2 py-1 text-slate-600 hover:bg-white rounded">+</button></div>}
                   </div>
                 );
               })}
             </div>
+            
             {cartItemsCount > 0 && (
               <div className="absolute bottom-0 left-0 right-0 bg-white border-t p-4 rounded-t-[32px] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] flex justify-between items-center z-40">
                 <div><span className="text-[9px] text-slate-400 block font-bold">TOTAL BAYAR</span><span className="text-base font-black text-indigo-600">{formatRp(cartTotal)}</span></div>
@@ -522,13 +542,15 @@ export default function App() {
           </div>
         )}
 
-        {/* SCREEN 5: CFO ADMIN PANEL */}
+        {/* SCREEN 5: CFO ADMIN PANEL (FULL SINKRONISASI & SCROLL BEBAS) */}
         {currentScreen === 'admin_dashboard' && (
-          <div className="flex-1 flex flex-col bg-[#F7F8FC] pt-12">
+          <div className="flex-1 flex flex-col min-h-0 h-full bg-[#F7F8FC]">
+            
+            {/* Header Menu CFO */}
             <div className="bg-slate-900 text-white p-4 flex flex-col gap-3 shrink-0 shadow-md z-10">
               <div className="flex justify-between items-center">
                 <h1 className="font-black text-xs flex items-center gap-1 text-indigo-300"><Shield size={14}/> CFO Panel Master</h1>
-                <button onClick={() => { setCurrentScreen('user_dashboard'); setUserTab('explore'); }} className="text-[9px] font-bold bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg text-slate-200 transition">Ke User Mode</button>
+                <button onClick={() => { setCurrentScreen('user_dashboard'); setUserTab('explore'); }} className="text-[9px] font-bold bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg text-slate-200 transition">User Mode</button>
               </div>
               
               <div className="flex bg-slate-800 p-1 rounded-xl">
@@ -537,8 +559,10 @@ export default function App() {
               </div>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-20">
+            {/* Scrollable Container Panel Admin */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-28 min-h-0">
               
+              {/* --- 1. VIEW REKAP ORDER --- */}
               {cfoMainTab === 'rekap' && (
                 <>
                   <div className="flex justify-between items-center p-3.5 bg-white border border-indigo-100 rounded-2xl shadow-sm">
@@ -580,6 +604,7 @@ export default function App() {
                 </>
               )}
 
+              {/* --- 2. VIEW KELOLA MASTER DATA --- */}
               {cfoMainTab === 'kelola' && (
                 <div className="space-y-6">
                   <div className="bg-white p-4 rounded-2xl border shadow-sm space-y-3">
@@ -706,7 +731,8 @@ export default function App() {
               )}
             </div>
             
-            <div className="bg-white p-3 border-t shadow-[0_-5px_15px_rgba(0,0,0,0.05)] z-20">
+            {/* Navigasi Keluar CFO */}
+            <div className="bg-white p-3 border-t shadow-[0_-5px_15px_rgba(0,0,0,0.05)] z-20 shrink-0">
               <button onClick={handleLogout} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 rounded-xl text-xs flex items-center justify-center gap-1.5 transition"><LogOut size={14}/>Keluar Sesi CFO</button>
             </div>
           </div>
